@@ -49,6 +49,62 @@ pub enum VfsError {
     #[error("Is not a directory: {0}")]
     NotDirectory(String),
 
+    #[error("Permission denied: {0}")]
+    PermissionDenied(String),
+
+    #[error("Path already exists: {0}")]
+    AlreadyExists(String),
+
+    #[error("Operation not supported: {0}")]
+    NotSupported(String),
+
     #[error("Other error: {0}")]
     Other(String),
+
+    #[error("Invalid path: {0}")]
+    InvalidPath(String),
+}
+
+// --- WASM Specific Helpers ---
+
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_helpers {
+    use super::{VercelKvVfs, VfsError};
+    use crate::utils::file_wasm;
+    use serde_json::{json, Value};
+    use wasm_bindgen::prelude::*;
+
+    /// Helper to get the VFS instance (WASM only).
+    pub async fn get_vfs() -> Result<VercelKvVfs, VfsError> {
+        file_wasm::get_vfs()
+            .await
+            .map_err(|e| VfsError::Other(format!("Failed to get VFS: {}", e)))
+    }
+
+    /// Helper to convert VfsError to JsValue for the FFI boundary (WASM only).
+    pub fn vfs_error_to_js(err: VfsError) -> JsValue {
+        let error_type = match &err {
+            VfsError::NotFound(_) => "NotFound",
+            VfsError::ConfigError(_) => "ConfigError",
+            VfsError::StorageError(_) => "StorageError",
+            VfsError::NetworkError(_) => "NetworkError",
+            VfsError::IoError(_) => "IoError",
+            VfsError::IsDirectory(_) => "IsDirectory",
+            VfsError::NotDirectory(_) => "NotDirectory",
+            VfsError::InvalidPath(_) => "InvalidPath",
+            VfsError::PermissionDenied(_) => "PermissionDenied",
+            VfsError::AlreadyExists(_) => "AlreadyExists",
+            VfsError::NotSupported(_) => "NotSupported",
+            VfsError::Other(_) => "Other",
+        };
+
+        let error_obj = json!({
+            "type": error_type,
+            "message": format!("{}", err)
+        });
+
+        // Serialize the JSON object to a string and then into JsValue
+        let error_json = error_obj.to_string();
+        JsValue::from_str(&error_json)
+    }
 }

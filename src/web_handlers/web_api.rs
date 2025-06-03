@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use actix_web::{web, HttpRequest, HttpResponse};
 use log::error;
 
@@ -32,7 +34,15 @@ impl SubResponse {
 pub async fn sub_handler(req: HttpRequest, query: web::Query<SubconverterQuery>) -> HttpResponse {
     let req_url = req.uri().to_string();
 
-    match sub_process(Some(req_url), query.into_inner()).await {
+    let mut request_headers = HashMap::new();
+    for (key, value) in req.headers() {
+        request_headers.insert(key.to_string(), value.to_str().unwrap_or("").to_string());
+    }
+
+    let mut modified_query = query.into_inner();
+    modified_query.request_headers = Some(request_headers);
+
+    match sub_process(Some(req_url), modified_query).await {
         Ok(response) => response.to_http_response(),
         Err(e) => {
             error!("Subconverter process error: {}", e);

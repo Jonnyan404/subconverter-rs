@@ -1,11 +1,14 @@
 'use client';
 
-import React, { useState, useCallback, ChangeEvent, FormEvent } from 'react';
+import React, { useState, useCallback, ChangeEvent, FormEvent, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import {
     convertSubscription,
     SubconverterFormParams,
     SubResponseData,
-    ErrorData
+    ErrorData,
+    createShortUrl,
+    ShortUrlData
 } from '@/lib/api-client';
 
 // Define supported targets
@@ -29,6 +32,12 @@ export default function ConvertPage() {
     const [result, setResult] = useState<SubResponseData | null>(null);
     const [error, setError] = useState<ErrorData | null>(null);
     const [saveApiUrl, setSaveApiUrl] = useState(false);
+    const [shortUrlCreating, setShortUrlCreating] = useState(false);
+    const [shortUrlCreated, setShortUrlCreated] = useState(false);
+    const [shortUrlData, setShortUrlData] = useState<ShortUrlData | null>(null);
+
+    const t = useTranslations('ConvertPage');
+    const commonT = useTranslations('Common');
 
     const handleInputChange = useCallback((e: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value, type } = e.target;
@@ -88,6 +97,12 @@ export default function ConvertPage() {
         });
     }, [setFields]);
 
+    // Reset shortUrlCreated when form inputs change
+    useEffect(() => {
+        setShortUrlCreated(false);
+        setShortUrlData(null); // Also reset the data
+    }, [formData]);
+
     const handleResetField = useCallback((fieldName: string) => {
         setFormData(prev => {
             const newFormData = { ...prev };
@@ -108,10 +123,18 @@ export default function ConvertPage() {
         setIsLoading(true);
         setResult(null);
         setError(null);
+        setShortUrlCreated(false); // Reset short URL status on new submit
+        setShortUrlData(null);
 
         try {
             const responseData = await convertSubscription(formData);
             setResult(responseData);
+
+            // If saveApiUrl is enabled, create a short URL
+            if (saveApiUrl) {
+                await createShortUrlForConversion();
+            }
+
         } catch (err) {
             console.error("Conversion API call failed:", err);
             setError(err as ErrorData || {
@@ -121,7 +144,7 @@ export default function ConvertPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [formData]);
+    }, [formData, saveApiUrl]);
 
     const handleDownload = useCallback(() => {
         if (!result || !result.content) return;
@@ -145,6 +168,7 @@ export default function ConvertPage() {
     const labelClass = "block text-sm font-medium text-gray-700";
     const fieldsetLegendClass = "text-lg font-semibold text-gray-900 mb-2";
     const buttonClass = "inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50";
+    const smallButtonClass = "px-3 py-1.5 text-xs rounded border transition-colors"; // For preset buttons
 
     // Add a helper component for field labels with reset button
     const FieldLabel = ({ htmlFor, children, fieldName, required = false }: {
@@ -163,7 +187,7 @@ export default function ConvertPage() {
                     {required && <span className="text-red-500 ml-1">*</span>}
                     {isSet && !required && (
                         <span className="ml-2 text-xs font-normal text-green-600">
-                            (set)
+                            ({t('fieldSet')})
                         </span>
                     )}
                 </label>
@@ -174,7 +198,7 @@ export default function ConvertPage() {
                         className="text-xs text-gray-500 hover:text-red-500"
                         title="Reset to unset"
                     >
-                        unset
+                        {t('unset')}
                     </button>
                 )}
             </div>
@@ -212,18 +236,44 @@ export default function ConvertPage() {
         return `${baseUrl}?${params.toString()}`;
     }, [formData, setFields]);
 
+    // Create a short URL for the current conversion parameters
+    const createShortUrlForConversion = async () => {
+        if (!formData.url) return;
+
+        try {
+            setShortUrlCreating(true);
+            setShortUrlCreated(false); // Reset before trying
+            const apiUrl = generateApiUrl();
+            const description = `${formData.target.toUpperCase()} conversion for ${formData.url.substring(0, 30)}${formData.url.length > 30 ? '...' : ''}`;
+
+            const shortUrl = await createShortUrl({
+                target_url: apiUrl,
+                description: description
+            });
+
+            setShortUrlData(shortUrl);
+            setShortUrlCreated(true);
+        } catch (err) {
+            console.error("Error creating short URL:", err);
+            // Optionally show a subtle error message for short URL failure?
+            // For now, we just log it.
+        } finally {
+            setShortUrlCreating(false);
+        }
+    };
+
     // Replace the placeholder return statement with the actual form UI
     return (
         <div className="container mx-auto p-4 max-w-4xl">
-            <h1 className="text-2xl font-bold mb-6">Subscription Converter</h1>
+            <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Required Section */}
-                <fieldset className="p-4 border rounded-md">
-                    <legend className={fieldsetLegendClass}>Required</legend>
+                <fieldset className="p-4 border rounded-md border-gray-300 shadow-sm">
+                    <legend className={fieldsetLegendClass}>{t('requiredSectionTitle')}</legend>
                     <div className="grid grid-cols-1 gap-6">
                         <div>
-                            <FieldLabel htmlFor="target" fieldName="target" required>Target Format</FieldLabel>
+                            <FieldLabel htmlFor="target" fieldName="target" required>{t('targetFormatLabel')}</FieldLabel>
                             <select
                                 id="target"
                                 name="target"
@@ -236,28 +286,28 @@ export default function ConvertPage() {
                             </select>
                         </div>
                         <div>
-                            <FieldLabel htmlFor="url" fieldName="url" required>Subscription URL(s)</FieldLabel>
+                            <FieldLabel htmlFor="url" fieldName="url" required>{t('subscriptionUrlLabel')}</FieldLabel>
                             <textarea
                                 id="url"
                                 name="url"
                                 value={formData.url}
                                 onChange={handleInputChange}
                                 required
-                                placeholder="Enter one or more URLs, separated by |"
+                                placeholder={t('subscriptionUrlPlaceholder')}
                                 rows={3}
                                 className={getInputClass("url")}
                             />
-                            <p className="mt-1 text-xs text-gray-500">Separate multiple URLs with a pipe (|).</p>
+                            <p className="mt-1 text-xs text-gray-500">{t('subscriptionUrlHelp')}</p>
                         </div>
                     </div>
                 </fieldset>
 
                 {/* Config Section */}
                 <fieldset className="p-4 border-2 rounded-md border-blue-300 bg-blue-50 shadow-sm">
-                    <legend className={`${fieldsetLegendClass} text-blue-800`}>Configuration Presets</legend>
+                    <legend className={`${fieldsetLegendClass} text-blue-800`}>{t('configSectionTitle')}</legend>
                     <div className="grid grid-cols-1 gap-4">
                         <div>
-                            <FieldLabel htmlFor="config" fieldName="config">External Config</FieldLabel>
+                            <FieldLabel htmlFor="config" fieldName="config">{t('externalConfigLabel')}</FieldLabel>
                             <div className="grid grid-cols-1 gap-2">
                                 <div className="flex flex-wrap gap-2 mb-2">
                                     <button
@@ -266,9 +316,9 @@ export default function ConvertPage() {
                                             setFormData(prev => ({ ...prev, config: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online.ini' }));
                                             setSetFields(prev => new Set([...prev, 'config']));
                                         }}
-                                        className="px-3 py-1.5 text-xs rounded bg-blue-100 hover:bg-blue-200 border border-blue-300 transition-colors"
+                                        className={`${smallButtonClass} bg-blue-100 hover:bg-blue-200 border-blue-300`}
                                     >
-                                        ACL4SSR Online
+                                        {t('configPresetACL4SSROnline')}
                                     </button>
                                     <button
                                         type="button"
@@ -276,9 +326,9 @@ export default function ConvertPage() {
                                             setFormData(prev => ({ ...prev, config: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online_Full.ini' }));
                                             setSetFields(prev => new Set([...prev, 'config']));
                                         }}
-                                        className="px-3 py-1.5 text-xs rounded bg-blue-100 hover:bg-blue-200 border border-blue-300 transition-colors"
+                                        className={`${smallButtonClass} bg-blue-100 hover:bg-blue-200 border-blue-300`}
                                     >
-                                        ACL4SSR Online Full
+                                        {t('configPresetACL4SSROnlineFull')}
                                     </button>
                                     <button
                                         type="button"
@@ -286,9 +336,9 @@ export default function ConvertPage() {
                                             setFormData(prev => ({ ...prev, config: 'https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online_Mini.ini' }));
                                             setSetFields(prev => new Set([...prev, 'config']));
                                         }}
-                                        className="px-3 py-1.5 text-xs rounded bg-blue-100 hover:bg-blue-200 border border-blue-300 transition-colors"
+                                        className={`${smallButtonClass} bg-blue-100 hover:bg-blue-200 border-blue-300`}
                                     >
-                                        ACL4SSR Online Mini
+                                        {t('configPresetACL4SSROnlineMini')}
                                     </button>
                                     <button
                                         type="button"
@@ -296,9 +346,9 @@ export default function ConvertPage() {
                                             setFormData(prev => ({ ...prev, config: 'https://raw.githubusercontent.com/DivineEngine/Profiles/master/Clash/config/China.yaml' }));
                                             setSetFields(prev => new Set([...prev, 'config']));
                                         }}
-                                        className="px-3 py-1.5 text-xs rounded bg-blue-100 hover:bg-blue-200 border border-blue-300 transition-colors"
+                                        className={`${smallButtonClass} bg-blue-100 hover:bg-blue-200 border-blue-300`}
                                     >
-                                        Divine Engine China
+                                        {t('configPresetDivineEngine')}
                                     </button>
                                     <button
                                         type="button"
@@ -306,9 +356,9 @@ export default function ConvertPage() {
                                             setFormData(prev => ({ ...prev, config: 'https://gist.githubusercontent.com/tindy2013/1fa08640a9088ac8652dbd40c5d2715b/raw/loon_simple.conf' }));
                                             setSetFields(prev => new Set([...prev, 'config']));
                                         }}
-                                        className="px-3 py-1.5 text-xs rounded bg-blue-100 hover:bg-blue-200 border border-blue-300 transition-colors"
+                                        className={`${smallButtonClass} bg-blue-100 hover:bg-blue-200 border-blue-300`}
                                     >
-                                        Loon Simple
+                                        {t('configPresetLoonSimple')}
                                     </button>
                                 </div>
                                 <input
@@ -318,20 +368,20 @@ export default function ConvertPage() {
                                     value={formData.config ?? ''}
                                     onChange={handleInputChange}
                                     className={getInputClass("config")}
-                                    placeholder="Enter a URL or select a preset above"
+                                    placeholder={t('externalConfigPlaceholder')}
                                 />
-                                <p className="mt-1 text-xs text-gray-600">URL for ruleset configuration or local path (if server allows)</p>
+                                <p className="mt-1 text-xs text-gray-600">{t('externalConfigHelp')}</p>
                             </div>
                         </div>
                     </div>
                 </fieldset>
 
                 {/* Filtering & Renaming Section */}
-                <fieldset className="p-4 border rounded-md">
-                    <legend className={fieldsetLegendClass}>Filtering & Renaming</legend>
+                <fieldset className="p-4 border rounded-md border-gray-300 shadow-sm">
+                    <legend className={fieldsetLegendClass}>{t('filterRenameSectionTitle')}</legend>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <FieldLabel htmlFor="include" fieldName="include">Include Remarks (Regex)</FieldLabel>
+                            <FieldLabel htmlFor="include" fieldName="include">{t('includeRemarksLabel')}</FieldLabel>
                             <input
                                 type="text"
                                 id="include"
@@ -339,11 +389,11 @@ export default function ConvertPage() {
                                 value={formData.include ?? ''}
                                 onChange={handleInputChange}
                                 className={getInputClass("include")}
-                                placeholder="e.g., HK|SG"
+                                placeholder={t('includeRemarksPlaceholder')}
                             />
                         </div>
                         <div>
-                            <FieldLabel htmlFor="exclude" fieldName="exclude">Exclude Remarks (Regex)</FieldLabel>
+                            <FieldLabel htmlFor="exclude" fieldName="exclude">{t('excludeRemarksLabel')}</FieldLabel>
                             <input
                                 type="text"
                                 id="exclude"
@@ -351,11 +401,11 @@ export default function ConvertPage() {
                                 value={formData.exclude ?? ''}
                                 onChange={handleInputChange}
                                 className={getInputClass("exclude")}
-                                placeholder="e.g., expire|disabled"
+                                placeholder={t('excludeRemarksPlaceholder')}
                             />
                         </div>
                         <div>
-                            <FieldLabel htmlFor="rename" fieldName="rename">Rename Nodes</FieldLabel>
+                            <FieldLabel htmlFor="rename" fieldName="rename">{t('renameNodesLabel')}</FieldLabel>
                             <textarea
                                 id="rename"
                                 name="rename"
@@ -363,12 +413,12 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={getInputClass("rename")}
                                 rows={2}
-                                placeholder="oldName@newName`anotherOld@anotherNew"
+                                placeholder={t('renameNodesPlaceholder')}
                             />
-                            <p className="mt-1 text-xs text-gray-500">Use ` to separate multiple rules, @ as delimiter.</p>
+                            <p className="mt-1 text-xs text-gray-500">{t('renameNodesHelp')}</p>
                         </div>
                         <div className="space-y-2">
-                            <FieldLabel htmlFor="emoji" fieldName="emoji">Emoji Handling</FieldLabel>
+                            <FieldLabel htmlFor="emoji" fieldName="emoji">{t('emojiHandlingLabel')}</FieldLabel>
                             <div className="flex items-center space-x-4">
                                 <div className="flex items-center">
                                     <input
@@ -379,7 +429,7 @@ export default function ConvertPage() {
                                         onChange={handleInputChange}
                                         className={checkboxClass}
                                     />
-                                    <label htmlFor="emoji" className="ml-2 block text-sm text-gray-900">Add & Remove Old Emoji</label>
+                                    <label htmlFor="emoji" className="ml-2 block text-sm text-gray-900">{t('emojiAddRemoveLabel')}</label>
                                 </div>
                             </div>
                             <div className="flex items-center space-x-4 pl-4">
@@ -393,7 +443,7 @@ export default function ConvertPage() {
                                         className={checkboxClass}
                                         disabled={formData.emoji}
                                     />
-                                    <label htmlFor="add_emoji" className="ml-2 block text-sm text-gray-900">Add Emoji (Only)</label>
+                                    <label htmlFor="add_emoji" className="ml-2 block text-sm text-gray-900">{t('emojiAddOnlyLabel')}</label>
                                 </div>
                                 <div className="flex items-center">
                                     <input
@@ -405,13 +455,13 @@ export default function ConvertPage() {
                                         className={checkboxClass}
                                         disabled={formData.emoji}
                                     />
-                                    <label htmlFor="remove_emoji" className="ml-2 block text-sm text-gray-900">Remove Old Emoji (Only)</label>
+                                    <label htmlFor="remove_emoji" className="ml-2 block text-sm text-gray-900">{t('emojiRemoveOnlyLabel')}</label>
                                 </div>
                             </div>
-                            <p className="mt-1 text-xs text-gray-500 pl-4">Checking the first option overrides the specifics.</p>
+                            <p className="mt-1 text-xs text-gray-500 pl-4">{t('emojiHelp')}</p>
                         </div>
                         <div className="flex items-center">
-                            <FieldLabel htmlFor="fdn" fieldName="fdn">Filter Deprecated Nodes</FieldLabel>
+                            <FieldLabel htmlFor="fdn" fieldName="fdn">{t('filterDeprecatedLabel')}</FieldLabel>
                             <input
                                 id="fdn"
                                 name="fdn"
@@ -425,13 +475,13 @@ export default function ConvertPage() {
                 </fieldset>
 
                 {/* Output Options Section */}
-                <fieldset className="p-4 border rounded-md">
-                    <legend className={fieldsetLegendClass}>Output Options</legend>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <fieldset className="p-4 border rounded-md border-gray-300 shadow-sm">
+                    <legend className={fieldsetLegendClass}>{t('outputOptionsSectionTitle')}</legend>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-center">
                         {/* Surge Specific */}
                         {formData.target === 'surge' && (
                             <div className="col-span-1">
-                                <FieldLabel htmlFor="ver" fieldName="ver">Surge Version</FieldLabel>
+                                <FieldLabel htmlFor="ver" fieldName="ver">{t('surgeVersionLabel')}</FieldLabel>
                                 <input
                                     type="number"
                                     id="ver"
@@ -447,8 +497,7 @@ export default function ConvertPage() {
                         {/* Clash Specific */}
                         {(formData.target === 'clash' || formData.target === 'clashr') && (
                             <>
-                                <div className="flex items-center">
-                                    <FieldLabel htmlFor="new_name" fieldName="new_name">Clash: New Field Names</FieldLabel>
+                                <div className="flex items-center space-x-2">
                                     <input
                                         id="new_name"
                                         name="new_name"
@@ -457,9 +506,9 @@ export default function ConvertPage() {
                                         onChange={handleInputChange}
                                         className={checkboxClass}
                                     />
+                                    <FieldLabel htmlFor="new_name" fieldName="new_name">{t('clashNewFieldNamesLabel')}</FieldLabel>
                                 </div>
-                                <div className="flex items-center">
-                                    <FieldLabel htmlFor="script" fieldName="script">Clash: Enable Scripting</FieldLabel>
+                                <div className="flex items-center space-x-2">
                                     <input
                                         id="script"
                                         name="script"
@@ -468,9 +517,9 @@ export default function ConvertPage() {
                                         onChange={handleInputChange}
                                         className={checkboxClass}
                                     />
+                                    <FieldLabel htmlFor="script" fieldName="script">{t('clashEnableScriptingLabel')}</FieldLabel>
                                 </div>
-                                <div className="flex items-center">
-                                    <FieldLabel htmlFor="classic" fieldName="classic">Clash: Classic Ruleset</FieldLabel>
+                                <div className="flex items-center space-x-2">
                                     <input
                                         id="classic"
                                         name="classic"
@@ -479,11 +528,11 @@ export default function ConvertPage() {
                                         onChange={handleInputChange}
                                         className={checkboxClass}
                                     />
+                                    <FieldLabel htmlFor="classic" fieldName="classic">{t('clashClassicRulesetLabel')}</FieldLabel>
                                 </div>
                             </>
                         )}
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="append_type" fieldName="append_type">Append Proxy Type</FieldLabel>
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="append_type"
                                 name="append_type"
@@ -492,9 +541,9 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="append_type" fieldName="append_type">{t('appendProxyTypeLabel')}</FieldLabel>
                         </div>
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="list" fieldName="list">Node List Only</FieldLabel>
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="list"
                                 name="list"
@@ -503,9 +552,9 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="list" fieldName="list">{t('nodeListOnlyLabel')}</FieldLabel>
                         </div>
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="sort" fieldName="sort">Sort Nodes</FieldLabel>
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="sort"
                                 name="sort"
@@ -514,9 +563,9 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="sort" fieldName="sort">{t('sortNodesLabel')}</FieldLabel>
                         </div>
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="rename_node" fieldName="rename_node">Enable Rule Generator Rename</FieldLabel>
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="rename_node"
                                 name="rename_node"
@@ -525,9 +574,9 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="rename_node" fieldName="rename_node">{t('enableRuleGeneratorRenameLabel')}</FieldLabel>
                         </div>
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="expand" fieldName="expand">Expand Rulesets (Clash)</FieldLabel>
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="expand"
                                 name="expand"
@@ -536,16 +585,16 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="expand" fieldName="expand">{t('expandRulesetsLabel')}</FieldLabel>
                         </div>
                     </div>
                 </fieldset>
 
                 {/* Protocol Flags Section */}
-                <fieldset className="p-4 border rounded-md">
-                    <legend className={fieldsetLegendClass}>Protocol Flags</legend>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="tfo" fieldName="tfo">TCP Fast Open</FieldLabel>
+                <fieldset className="p-4 border rounded-md border-gray-300 shadow-sm">
+                    <legend className={fieldsetLegendClass}>{t('protocolFlagsSectionTitle')}</legend>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-center">
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="tfo"
                                 name="tfo"
@@ -554,9 +603,9 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="tfo" fieldName="tfo">{t('tcpFastOpenLabel')}</FieldLabel>
                         </div>
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="udp" fieldName="udp">UDP Relay</FieldLabel>
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="udp"
                                 name="udp"
@@ -565,9 +614,9 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="udp" fieldName="udp">{t('udpRelayLabel')}</FieldLabel>
                         </div>
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="scv" fieldName="scv">Skip Cert Verify</FieldLabel>
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="scv"
                                 name="scv"
@@ -576,9 +625,9 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="scv" fieldName="scv">{t('skipCertVerifyLabel')}</FieldLabel>
                         </div>
-                        <div className="flex items-center">
-                            <FieldLabel htmlFor="tls13" fieldName="tls13">Enable TLS 1.3</FieldLabel>
+                        <div className="flex items-center space-x-2">
                             <input
                                 id="tls13"
                                 name="tls13"
@@ -587,16 +636,17 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={checkboxClass}
                             />
+                            <FieldLabel htmlFor="tls13" fieldName="tls13">{t('enableTls13Label')}</FieldLabel>
                         </div>
                     </div>
                 </fieldset>
 
                 {/* Advanced Section */}
-                <fieldset className="p-4 border rounded-md">
-                    <legend className={fieldsetLegendClass}>Advanced</legend>
+                <fieldset className="p-4 border rounded-md border-gray-300 shadow-sm">
+                    <legend className={fieldsetLegendClass}>{t('advancedSectionTitle')}</legend>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <FieldLabel htmlFor="group" fieldName="group">Custom Group Name</FieldLabel>
+                            <FieldLabel htmlFor="group" fieldName="group">{t('customGroupNameLabel')}</FieldLabel>
                             <input
                                 type="text"
                                 id="group"
@@ -607,7 +657,7 @@ export default function ConvertPage() {
                             />
                         </div>
                         <div>
-                            <FieldLabel htmlFor="groups" fieldName="groups">Custom Proxy Groups</FieldLabel>
+                            <FieldLabel htmlFor="groups" fieldName="groups">{t('customProxyGroupsLabel')}</FieldLabel>
                             <textarea
                                 id="groups"
                                 name="groups"
@@ -615,12 +665,12 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={getInputClass("groups")}
                                 rows={2}
-                                placeholder="[Proxy Group]`..."
+                                placeholder={t('customProxyGroupsPlaceholder')}
                             />
-                            <p className="mt-1 text-xs text-gray-500">INI-like format, separated by @.</p>
+                            <p className="mt-1 text-xs text-gray-500">{t('customProxyGroupsHelp')}</p>
                         </div>
                         <div>
-                            <FieldLabel htmlFor="ruleset" fieldName="ruleset">Custom Ruleset</FieldLabel>
+                            <FieldLabel htmlFor="ruleset" fieldName="ruleset">{t('customRulesetLabel')}</FieldLabel>
                             <textarea
                                 id="ruleset"
                                 name="ruleset"
@@ -628,12 +678,12 @@ export default function ConvertPage() {
                                 onChange={handleInputChange}
                                 className={getInputClass("ruleset")}
                                 rows={2}
-                                placeholder="[Rule]`..."
+                                placeholder={t('customRulesetPlaceholder')}
                             />
-                            <p className="mt-1 text-xs text-gray-500">INI-like format, separated by @.</p>
+                            <p className="mt-1 text-xs text-gray-500">{t('customRulesetHelp')}</p>
                         </div>
                         <div className="flex items-center space-x-4">
-                            <FieldLabel htmlFor="insert" fieldName="insert">Insert Nodes (from server config)</FieldLabel>
+                            <FieldLabel htmlFor="insert" fieldName="insert">{t('insertNodesLabel')}</FieldLabel>
                             <input
                                 id="insert"
                                 name="insert"
@@ -644,7 +694,7 @@ export default function ConvertPage() {
                             />
                         </div>
                         <div className="flex items-center space-x-4">
-                            <FieldLabel htmlFor="prepend" fieldName="prepend">Prepend Inserted Nodes</FieldLabel>
+                            <FieldLabel htmlFor="prepend" fieldName="prepend">{t('prependInsertNodesLabel')}</FieldLabel>
                             <input
                                 id="prepend"
                                 name="prepend"
@@ -656,7 +706,7 @@ export default function ConvertPage() {
                             />
                         </div>
                         <div>
-                            <FieldLabel htmlFor="interval" fieldName="interval">Update Interval (seconds)</FieldLabel>
+                            <FieldLabel htmlFor="interval" fieldName="interval">{t('updateIntervalLabel')}</FieldLabel>
                             <input
                                 type="number"
                                 id="interval"
@@ -668,7 +718,7 @@ export default function ConvertPage() {
                             />
                         </div>
                         <div className="flex items-center">
-                            <FieldLabel htmlFor="strict" fieldName="strict">Strict Update Mode</FieldLabel>
+                            <FieldLabel htmlFor="strict" fieldName="strict">{t('strictUpdateModeLabel')}</FieldLabel>
                             <input
                                 id="strict"
                                 name="strict"
@@ -679,7 +729,7 @@ export default function ConvertPage() {
                             />
                         </div>
                         <div>
-                            <FieldLabel htmlFor="sort_script" fieldName="sort_script">Sort Script URL/Path</FieldLabel>
+                            <FieldLabel htmlFor="sort_script" fieldName="sort_script">{t('sortScriptUrlLabel')}</FieldLabel>
                             <input
                                 type="text"
                                 id="sort_script"
@@ -690,7 +740,7 @@ export default function ConvertPage() {
                             />
                         </div>
                         <div>
-                            <FieldLabel htmlFor="filter" fieldName="filter">Filter Script URL/Path</FieldLabel>
+                            <FieldLabel htmlFor="filter" fieldName="filter">{t('filterScriptUrlLabel')}</FieldLabel>
                             <input
                                 type="text"
                                 id="filter"
@@ -701,7 +751,7 @@ export default function ConvertPage() {
                             />
                         </div>
                         <div>
-                            <FieldLabel htmlFor="dev_id" fieldName="dev_id">Device ID</FieldLabel>
+                            <FieldLabel htmlFor="dev_id" fieldName="dev_id">{t('deviceIdLabel')}</FieldLabel>
                             <input
                                 type="text"
                                 id="dev_id"
@@ -712,7 +762,7 @@ export default function ConvertPage() {
                             />
                         </div>
                         <div>
-                            <FieldLabel htmlFor="token" fieldName="token">API Token (if required)</FieldLabel>
+                            <FieldLabel htmlFor="token" fieldName="token">{t('apiTokenLabel')}</FieldLabel>
                             <input
                                 type="password"
                                 id="token"
@@ -722,13 +772,39 @@ export default function ConvertPage() {
                                 className={getInputClass("token")}
                             />
                         </div>
+                        {/* Added Upload Fields */}
+                        <div className="flex items-center space-x-2">
+                            <input
+                                id="upload"
+                                name="upload"
+                                type="checkbox"
+                                checked={formData.upload}
+                                onChange={handleInputChange}
+                                className={checkboxClass}
+                            />
+                            <FieldLabel htmlFor="upload" fieldName="upload">{t('uploadResultLabel')}</FieldLabel>
+                        </div>
+                        <div>
+                            <FieldLabel htmlFor="upload_path" fieldName="upload_path">{t('uploadPathLabel')}</FieldLabel>
+                            <input
+                                type="text"
+                                id="upload_path"
+                                name="upload_path"
+                                value={formData.upload_path ?? ''}
+                                onChange={handleInputChange}
+                                className={getInputClass("upload_path")}
+                                disabled={!formData.upload}
+                                placeholder={t('uploadPathPlaceholder')}
+                            />
+                            <p className="mt-1 text-xs text-gray-500">{t('uploadPathHelp')}</p>
+                        </div>
                     </div>
                 </fieldset>
 
                 {/* Submission Button */}
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200">
                     <div className="text-sm text-gray-500">
-                        Fields marked as <span className="text-green-600">(set)</span> will be included in the request.
+                        {t('setFieldsInfo')} <span className="text-green-600">({t('fieldSet')})</span> {t('setFieldsInfoSuffix')}
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="flex items-center">
@@ -740,15 +816,15 @@ export default function ConvertPage() {
                                 className={checkboxClass}
                             />
                             <label htmlFor="saveApiUrl" className="ml-2 text-sm text-gray-700">
-                                Save as subscription
+                                {t('saveAsSubscription')}
                             </label>
                         </div>
                         <button
                             type="submit"
-                            disabled={isSubmitDisabled}
+                            disabled={isSubmitDisabled || shortUrlCreating}
                             className={buttonClass}
                         >
-                            {isLoading ? 'Generating...' : 'Generate Configuration'}
+                            {isLoading ? t('generatingButton') : (shortUrlCreating ? t('creatingShortUrlButton') : t('generateButton'))}
                         </button>
                     </div>
                 </div>
@@ -756,16 +832,16 @@ export default function ConvertPage() {
 
             {/* Results Section */}
             <div className="mt-8">
-                {isLoading && (
+                {isLoading && !result && ( // Only show main loading if no result yet
                     <div className="text-center p-4">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500 mx-auto"></div>
-                        <p className="mt-2 text-sm text-gray-600">Processing...</p>
+                        <p className="mt-2 text-sm text-gray-600">{t('processing')}</p>
                     </div>
                 )}
 
                 {error && (
                     <div className="p-4 border border-red-400 bg-red-50 rounded-md">
-                        <h3 className="text-lg font-semibold text-red-800">Error</h3>
+                        <h3 className="text-lg font-semibold text-red-800">{commonT('error')}</h3>
                         <p className="text-red-700">{error.error}</p>
                         {error.details && <p className="mt-1 text-sm text-red-600">{error.details}</p>}
                     </div>
@@ -773,26 +849,30 @@ export default function ConvertPage() {
 
                 {result && !error && (
                     <div className="p-4 border border-green-400 bg-green-50 rounded-md">
-                        <h3 className="text-lg font-semibold text-green-800">Result</h3>
-                        <p className="text-sm text-gray-600 mb-2">Content-Type: {result.content_type}</p>
+                        <h3 className="text-lg font-semibold text-green-800">{t('resultTitle')}</h3>
+                        <p className="text-sm text-gray-600 mb-2">{t('contentTypeLabel')}: {result.content_type}</p>
 
                         {/* API URL Display */}
                         <div className="mb-4 p-3 bg-white border border-gray-300 rounded-md">
                             <div className="flex justify-between items-center mb-2">
-                                <h4 className="font-medium text-gray-800">Subscription URL</h4>
+                                <h4 className="font-medium text-gray-800">{t('subscriptionUrlDisplay')}</h4>
                                 <button
-                                    onClick={() => navigator.clipboard.writeText(generateApiUrl())}
+                                    onClick={() => navigator.clipboard.writeText(shortUrlData && shortUrlCreated ? shortUrlData.short_url : generateApiUrl())}
                                     className="text-xs px-2 py-1 bg-gray-200 hover:bg-gray-300 rounded"
                                 >
-                                    Copy
+                                    {commonT('copy')}
                                 </button>
                             </div>
                             <p className="text-xs break-all font-mono bg-gray-50 p-2 rounded border border-gray-200">
-                                {generateApiUrl()}
+                                {shortUrlData && shortUrlCreated ? shortUrlData.short_url : generateApiUrl()}
                             </p>
+                            {shortUrlCreating && (
+                                <p className="text-xs text-blue-500 mt-1">{t('creatingShortUrl')}</p>
+                            )}
                             <p className="text-xs text-gray-500 mt-1">
-                                You can use this URL directly as a subscription link.
-                                {saveApiUrl && " This URL will be saved for later use."}
+                                {t('useUrlMessage')}
+                                {saveApiUrl && !shortUrlCreated && !shortUrlCreating && t('urlWillBeSaved')}
+                                {shortUrlCreated && t('shortUrlMessage')}
                             </p>
                         </div>
 
@@ -801,14 +881,14 @@ export default function ConvertPage() {
                             value={result.content}
                             rows={15}
                             className="w-full p-2 border border-gray-300 rounded-md font-mono text-sm bg-gray-50"
-                            aria-label="Conversion Result"
+                            aria-label={t('conversionResultAriaLabel')}
                         />
                         <div className="mt-4 flex justify-end">
                             <button
                                 onClick={handleDownload}
                                 className={buttonClass}
                             >
-                                Download Config
+                                {t('downloadConfigButton')}
                             </button>
                         </div>
                     </div>

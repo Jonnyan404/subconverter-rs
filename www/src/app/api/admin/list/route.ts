@@ -27,19 +27,12 @@ export async function GET(request: NextRequest) {
     console.log(`Admin API request: GET /api/admin/list?path=${path}${debug ? '&debug=true' : ''}${shallow ? '&shallow=true' : ''}`);
 
     try {
-        // Use the appropriate function based on debug flag
-        if (debug) {
-            console.log(`Debug listing directory: ${path}`);
-            const debugInfo = await wasmModule.debug_list_directory(path, shallow);
-            return NextResponse.json(debugInfo);
-        } else {
-            console.log(`Listing directory: ${path}`);
-            const entries = await wasmModule.list_directory(path);
-            return NextResponse.json({
-                path,
-                entries
-            });
-        }
+        console.log(`Listing directory: ${path}`);
+        const entries = await wasmModule.list_directory(path);
+        return NextResponse.json({
+            path,
+            entries
+        });
     } catch (error: any) {
         console.error(`Error listing directory ${path}:`, error);
         const errorMessage = typeof error === 'string' ? error : (error.message || 'Unknown WASM error');

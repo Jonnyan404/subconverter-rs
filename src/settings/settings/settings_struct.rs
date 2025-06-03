@@ -26,7 +26,8 @@ use crate::utils::file_get_async;
 use crate::utils::http::ProxyConfig;
 use crate::utils::web_get_async;
 
-// For wasm32 targets, implement a mock RwLock that works in single-threaded environments
+// For wasm32 targets, implement a mock RwLock that works in single-threaded
+// environments
 #[cfg(target_arch = "wasm32")]
 pub struct MockRwLock<T> {
     inner: UnsafeCell<T>,
@@ -186,6 +187,7 @@ pub struct Settings {
     pub update_interval: u32,
     pub sort_script: String,
     pub filter_script: String,
+    pub enable_filter: bool,
 
     // Base configs
     pub clash_base: String,
@@ -337,7 +339,7 @@ impl Default for Settings {
             update_interval: 0,
             sort_script: String::new(),
             filter_script: String::new(),
-
+            enable_filter: false,
             // Base configs
             clash_base: String::new(),
             surge_base: String::new(),

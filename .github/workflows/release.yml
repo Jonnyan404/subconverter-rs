@@ -2,14 +2,13 @@ name: Build and Release
 
 on:
   push:
-    branches: [ dev ]
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
       - 'v[0-9]+.[0-9]+.[0-9]+-pre.*'
       - 'v[0-9]+.[0-9]+.[0-9]+-rc.*'
   workflow_dispatch:
   repository_dispatch:
-    types: [wasm-release-completed]
+    types: [trigger-native-release]
 
 concurrency: 
   group: ${{ github.ref }}-${{ github.workflow }}
@@ -31,11 +30,11 @@ jobs:
           - arch: armv7
             artifact: subconverter-linux-armv7
             os: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
+            target: armv7-unknown-linux-musleabihf
           - arch: aarch64
             artifact: subconverter-linux-aarch64
             os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
+            target: aarch64-unknown-linux-musl
     runs-on: ${{ matrix.os }}
     name: Linux ${{ matrix.arch }} Build
     steps:
@@ -48,7 +47,7 @@ jobs:
         VERSION=""
         if [[ "${{ github.event_name }}" == "push" && "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
           VERSION=${GITHUB_REF#refs/tags/v}
-        elif [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.action }}" == "wasm-release-completed" ]]; then
+        elif [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.action }}" == "trigger-native-release" ]]; then
           VERSION=${{ github.event.client_payload.version }}
         elif [[ "${{ github.event_name }}" == "push" && "${{ !startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
           SHA=$(git rev-parse --short HEAD)
@@ -84,10 +83,8 @@ jobs:
       run: cargo install cross
       
     - name: Build with cross
-      run: cross build --release --features=web-api --target ${{ matrix.target }}
-      env:
-        RUSTFLAGS: "-C target-feature=+crt-static"
-        
+      run: cross build --release --features=web-api${{ matrix.arch == 'amd64' && ',js-runtime' || '' }} --target ${{ matrix.target }}
+      
     - name: Prepare artifact
       run: |
         mkdir -p subconverter/
@@ -101,13 +98,13 @@ jobs:
         path: subconverter/
         
     - name: Package Release
-      # Run for tags or wasm-release-completed event
-      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'wasm-release-completed')
+      # Run for tags or trigger-native-release event
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'trigger-native-release')
       run: tar czf ${{ matrix.artifact }}-${{ env.RELEASE_VERSION }}.tar.gz subconverter
       
     - name: Draft Release
-      # Run for tags or wasm-release-completed event
-      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'wasm-release-completed')
+      # Run for tags or trigger-native-release event
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'trigger-native-release')
       uses: softprops/action-gh-release@v2
       with:
         files: ${{ matrix.artifact }}-${{ env.RELEASE_VERSION }}.tar.gz
@@ -139,7 +136,7 @@ jobs:
         VERSION=""
         if [[ "${{ github.event_name }}" == "push" && "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
           VERSION=${GITHUB_REF#refs/tags/v}
-        elif [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.action }}" == "wasm-release-completed" ]]; then
+        elif [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.action }}" == "trigger-native-release" ]]; then
           VERSION=${{ github.event.client_payload.version }}
         elif [[ "${{ github.event_name }}" == "push" && "${{ !startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
           SHA=$(git rev-parse --short HEAD)
@@ -165,7 +162,7 @@ jobs:
         echo "Updated Cargo.toml version for branch build to ${{ env.RELEASE_VERSION }}"
         
     - name: Build
-      run: cargo build --release --features=web-api --target ${{ matrix.target }}
+      run: cargo build --release --features=web-api,js-runtime --target ${{ matrix.target }}
       
     - name: Prepare artifact
       run: |
@@ -180,11 +177,11 @@ jobs:
         path: subconverter/
         
     - name: Package Release
-      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'wasm-release-completed')
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'trigger-native-release')
       run: tar czf ${{ matrix.artifact }}-${{ env.RELEASE_VERSION }}.tar.gz subconverter
       
     - name: Draft Release
-      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'wasm-release-completed')
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'trigger-native-release')
       uses: softprops/action-gh-release@v2
       with:
         files: ${{ matrix.artifact }}-${{ env.RELEASE_VERSION }}.tar.gz
@@ -214,7 +211,7 @@ jobs:
         VERSION=""
         if [[ "${{ github.event_name }}" == "push" && "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
           VERSION=${GITHUB_REF#refs/tags/v}
-        elif [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.action }}" == "wasm-release-completed" ]]; then
+        elif [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.action }}" == "trigger-native-release" ]]; then
           VERSION=${{ github.event.client_payload.version }}
         elif [[ "${{ github.event_name }}" == "push" && "${{ !startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
           SHA=$(git rev-parse --short HEAD)
@@ -241,7 +238,9 @@ jobs:
         echo "Updated Cargo.toml version for branch build to ${{ env.RELEASE_VERSION }}"
         
     - name: Build
-      run: cargo build --release --features=web-api --target ${{ matrix.target }}
+      run: |
+        cargo install --force --locked bindgen-cli
+        cargo build --release --features=web-api${{ matrix.arch == 'amd64' && ',js-runtime' || '' }} --target ${{ matrix.target }}
       
     - name: Prepare artifact
       shell: bash
@@ -257,11 +256,11 @@ jobs:
         path: subconverter/
         
     - name: Package Release
-      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'wasm-release-completed')
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'trigger-native-release')
       run: 7z a ${{ matrix.artifact }}-${{ env.RELEASE_VERSION }}.7z subconverter/
       
     - name: Draft Release
-      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'wasm-release-completed')
+      if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'repository_dispatch' && github.event.action == 'trigger-native-release')
       uses: softprops/action-gh-release@v2
       with:
         files: ${{ matrix.artifact }}-${{ env.RELEASE_VERSION }}.7z

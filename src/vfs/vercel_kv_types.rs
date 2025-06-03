@@ -1,13 +1,17 @@
 use crate::utils::system::safe_system_time;
-use crate::vfs::VfsError;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::UNIX_EPOCH;
 use wasm_bindgen::prelude::*;
+
+use super::VfsError;
 
 // File metadata structure
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(getter_with_clone, inspectable)]
 pub struct FileAttributes {
+    /// Full path of the file or directory
+    pub path: String,
     /// Size of the file in bytes
     pub size: usize,
     /// Creation timestamp (seconds since UNIX epoch)
@@ -23,6 +27,7 @@ pub struct FileAttributes {
     /// - "cloud" = pulled from cloud (GitHub) but not modified
     /// - "placeholder" = not loaded yet, but known to exist in cloud
     /// - "" = unknown or default
+    /// This field now also implicitly represents the status.
     pub source_type: String,
 }
 
@@ -36,6 +41,7 @@ impl FileAttributes {
             .as_secs();
 
         Self {
+            path: "".to_string(),
             size: 0,
             created_at: now,
             modified_at: now,
@@ -54,6 +60,7 @@ impl Default for FileAttributes {
             .as_secs();
 
         Self {
+            path: "".to_string(),
             size: 0,
             created_at: now,
             modified_at: now,
@@ -75,6 +82,8 @@ pub struct DirectoryEntry {
     /// Is this entry a directory
     pub is_directory: bool,
     /// File attributes
+    /// For directories, this might hold the directory's own attributes
+    /// For files, this holds the file's attributes
     #[wasm_bindgen(getter_with_clone)]
     pub attributes: Option<FileAttributes>,
 }
@@ -125,10 +134,19 @@ pub struct LoadDirectoryResult {
 
 // Constants
 pub const FILE_CONTENT_SUFFIX: &str = "@@content";
-pub const FILE_METADATA_SUFFIX: &str = "@@metadata";
 pub const DIRECTORY_MARKER_SUFFIX: &str = "/@@dir";
-pub const FILE_STATUS_PLACEHOLDER: &str = "placeholder";
-pub const FILE_STATUS_SUFFIX: &str = "@@status";
+
+//------------------------------------------------------------------------------
+// NEW DIRECTORY METADATA TYPE
+//------------------------------------------------------------------------------
+
+/// Structure to store metadata for all files within a directory.
+/// This will be serialized to JSON and stored under the directory's `@@dir` key.
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct DirectoryMetadata {
+    /// Maps relative filename (within the directory) to its FileAttributes.
+    pub files: HashMap<String, FileAttributes>,
+}
 
 //------------------------------------------------------------------------------
 // GITHUB CACHE TYPES
@@ -196,4 +214,9 @@ pub trait VirtualFileSystem {
         directory_path: &str,
         shallow: bool,
     ) -> impl std::future::Future<Output = Result<LoadDirectoryResult, VfsError>>;
+
+    /// Initializes the VFS by attempting to load the root directory from GitHub
+    /// if it hasn't been loaded yet.
+    /// Returns `true` if the GitHub load was actually triggered, `false` otherwise.
+    fn initialize_github_load(&self) -> impl std::future::Future<Output = Result<bool, VfsError>>;
 }

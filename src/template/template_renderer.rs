@@ -25,15 +25,6 @@ pub struct TemplateArgs {
     pub node_list: HashMap<String, String>,
 }
 
-/// Context for template rendering
-#[derive(Debug, Serialize)]
-struct TemplateContext {
-    global: HashMap<String, String>,
-    request: HashMap<String, String>,
-    local: HashMap<String, String>,
-    node_list: HashMap<String, String>,
-}
-
 /// Render a template with the given arguments
 ///
 /// # Arguments

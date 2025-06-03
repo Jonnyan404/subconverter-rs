@@ -1,5 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 pub mod admin;
+#[cfg(target_arch = "wasm32")]
 pub mod init;
 #[cfg(target_arch = "wasm32")]
 pub mod rules;
@@ -8,6 +9,7 @@ pub mod short_urls;
 pub mod sub;
 #[cfg(target_arch = "wasm32")]
 pub use admin::*;
+#[cfg(target_arch = "wasm32")]
 pub use init::*;
 #[cfg(target_arch = "wasm32")]
 pub use rules::*;

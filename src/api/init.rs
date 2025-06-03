@@ -1,6 +1,14 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::utils::file_wasm;
+use crate::vfs::wasm_helpers::{get_vfs, vfs_error_to_js};
+use crate::vfs::{VercelKvVfs, VfsError, VirtualFileSystem};
+use log;
+use serde_json::{json, Value};
+
+// --- Wasm Bindgen Exports ---
+
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub fn init_wasm_logging(level: Option<String>) -> Result<(), JsValue> {
@@ -52,4 +60,14 @@ pub fn init_wasm_logging(level: Option<String>) -> Result<(), JsValue> {
             }
         }
     }
+}
+
+/// Initializes the VFS, potentially loading data from GitHub if it's the first time.
+/// Returns `true` if the GitHub load was triggered, `false` otherwise.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub async fn initialize_subconverter_webapp() -> Result<bool, JsValue> {
+    log::info!("initialize_subconverter_webapp called");
+    let vfs = get_vfs().await.map_err(vfs_error_to_js)?;
+    vfs.initialize_github_load().await.map_err(vfs_error_to_js)
 }

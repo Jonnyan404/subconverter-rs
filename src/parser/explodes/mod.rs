@@ -34,6 +34,7 @@ pub use surge::explode_surge;
 pub use trojan::{explode_trojan, explode_trojan_go};
 pub use vless::explode_vless;
 pub use vmess::{
-    explode_kitsunebi, explode_shadowrocket, explode_std_vmess, explode_vmess, explode_vmess_conf,
+    explode_kitsunebi, explode_shadowrocket, explode_std_vmess, explode_std_vmess_new,
+    explode_vmess, explode_vmess_conf,
 };
 pub use wireguard::explode_wireguard;

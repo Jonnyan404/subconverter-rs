@@ -1,7 +1,6 @@
 use crate::utils::http_wasm::{web_get_async, HttpResponse, ProxyConfig};
 use crate::utils::ini_reader::IniReader;
 use crate::vfs::vercel_kv_github::{GitHubConfig, GitHubTreeResponse};
-use crate::vfs::vercel_kv_vfs::VercelKvVfs;
 use crate::vfs::{VfsError, VirtualFileSystem};
 use case_insensitive_string::CaseInsensitiveString;
 use serde::{Deserialize, Serialize};

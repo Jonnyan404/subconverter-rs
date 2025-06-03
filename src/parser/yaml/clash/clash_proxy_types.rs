@@ -1,14 +1,14 @@
 use serde::Deserialize;
 
 use super::input_proxy_types::{
-    clash_input_http::ClashInputHttp, clash_input_hysteria::ClashInputHysteria,
-    clash_input_hysteria2::ClashInputHysteria2, clash_input_shadowsocks::ClashInputShadowsocks,
+    clash_input_anytls::ClashInputAnyTLS, clash_input_http::ClashInputHttp,
+    clash_input_hysteria::ClashInputHysteria, clash_input_hysteria2::ClashInputHysteria2,
+    clash_input_shadowsocks::ClashInputShadowsocks,
     clash_input_shadowsocksr::ClashInputShadowsocksR, clash_input_snell::ClashInputSnell,
     clash_input_socks5::ClashInputSocks5, clash_input_trojan::ClashInputTrojan,
     clash_input_vless::ClashInputVLess, clash_input_vmess::ClashInputVMess,
     clash_input_wireguard::ClashInputWireGuard,
 };
-
 
 /// Represents a single proxy in Clash configuration
 #[derive(Debug, Clone, Deserialize)]
@@ -46,6 +46,9 @@ pub enum ClashProxyYamlInput {
 
     #[serde(rename = "vless")]
     VLess(ClashInputVLess),
+
+    #[serde(rename = "anytls")]
+    AnyTls(ClashInputAnyTLS),
 
     // Handle other unknown proxy types
     #[serde(other)]

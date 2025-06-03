@@ -1,9 +1,10 @@
-use crate::utils::base64::base64_decode;
+use crate::utils::base64::url_safe_base64_decode;
 use crate::Proxy;
 
 /// Explode a proxy link into a Proxy object
 ///
-/// This function detects the type of proxy link and calls the appropriate parser
+/// This function detects the type of proxy link and calls the appropriate
+/// parser
 pub fn explode(link: &str, node: &mut Proxy) -> bool {
     // Trim the link
     let link = link.trim();
@@ -15,6 +16,11 @@ pub fn explode(link: &str, node: &mut Proxy) -> bool {
 
     // Detect link type and call appropriate parser
     if link.starts_with("vmess://") {
+        // Try new VMess parser first
+        if super::vmess::explode_std_vmess_new(link, node) {
+            return true;
+        }
+
         // Try standard VMess parser first
         if super::vmess::explode_vmess(link, node) {
             return true;
@@ -32,6 +38,8 @@ pub fn explode(link: &str, node: &mut Proxy) -> bool {
         if super::vmess::explode_kitsunebi(link, node) {
             return true;
         }
+
+        log::warn!("Failed to explode link: {}", link);
 
         return false;
     } else if link.starts_with("ss://") {
@@ -74,8 +82,8 @@ pub fn explode(link: &str, node: &mut Proxy) -> bool {
 
 /// Explode a subscription content into a vector of Proxy objects
 ///
-/// This function parses a subscription content (which may contain multiple proxy links)
-/// and returns a vector of Proxy objects
+/// This function parses a subscription content (which may contain multiple
+/// proxy links) and returns a vector of Proxy objects
 pub fn explode_sub(sub: &str, nodes: &mut Vec<Proxy>) -> bool {
     // Trim the subscription content
     let sub = sub.trim();
@@ -114,7 +122,7 @@ pub fn explode_sub(sub: &str, nodes: &mut Vec<Proxy>) -> bool {
     // If no specific format was detected, try as a normal subscription
     if !processed {
         // Try to decode as base64
-        let decoded = base64_decode(sub, false);
+        let decoded = url_safe_base64_decode(sub);
 
         // Check if it's a Surge format after decoding
         if decoded.contains("vmess=")
@@ -137,6 +145,8 @@ pub fn explode_sub(sub: &str, nodes: &mut Vec<Proxy>) -> bool {
         };
 
         let lines: Vec<&str> = decoded.split(delimiter).collect();
+
+        log::info!("Found {} lines in explode_sub process", lines.len());
 
         for line in lines {
             let line = line.trim().trim_end_matches('\r');

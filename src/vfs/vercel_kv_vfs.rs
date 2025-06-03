@@ -48,6 +48,75 @@ impl VercelKvVfs {
     pub(crate) fn metadata_cache(&self) -> Arc<RwLock<HashMap<String, FileAttributes>>> {
         self.store.get_metadata_cache()
     }
+
+    /// Internal implementation for initializing GitHub load.
+    /// Checks if root directory metadata exists and triggers load if not.
+    /// Returns true if load was triggered, false otherwise.
+    pub(crate) async fn initialize_github_load_impl(&self) -> Result<bool, VfsError> {
+        log::debug!("Checking if GitHub load initialization is needed for root...");
+        let mut github_load_triggered = false;
+
+        // Check cache first
+        let cached_metadata_exists = self.store.exists_in_metadata_cache("").await; // Check cache for root
+        let mut skip_github_due_to_cache = false;
+        if cached_metadata_exists {
+            // If cached, assume it's populated enough, skip GitHub load trigger.
+            log::debug!("Root directory metadata found in cache, skipping GitHub load trigger.");
+            skip_github_due_to_cache = true;
+        }
+
+        // Check KV store if not found in cache
+        if !skip_github_due_to_cache {
+            match self.store.read_directory_metadata_from_kv("").await {
+                Ok(metadata) if !metadata.files.is_empty() => {
+                    log::debug!("Root directory metadata found in KV and is not empty, skipping GitHub load trigger.");
+                    // No need to skip explicitly, load won't happen below
+                }
+                Ok(_) => {
+                    log::debug!(
+                        "Root directory metadata in KV is empty or missing. Triggering load..."
+                    );
+                    // Use shallow=true, recursive=true for initial population
+                    match self.load_github_directory_impl(true, true).await {
+                        Ok(_) => {
+                            log::info!("GitHub load triggered successfully for root directory during initialization.");
+                            github_load_triggered = true;
+                        }
+                        Err(load_err) => {
+                            log::error!(
+                                "GitHub load trigger failed during initialization: {:?}. VFS might be empty.",
+                                load_err
+                            );
+                            return Err(load_err); // Propagate the error if initialization fails
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Error checking root metadata in KV during initialization: {:?}. Attempting load anyway.", e);
+                    // Attempt load even if the check failed
+                    match self.load_github_directory_impl(true, true).await {
+                        Ok(_) => {
+                            log::info!("GitHub load triggered successfully for root directory after KV check error.");
+                            github_load_triggered = true;
+                        }
+                        Err(load_err) => {
+                            log::error!(
+                                "GitHub load trigger failed after KV check error: {:?}. VFS might be empty.",
+                                load_err
+                            );
+                            return Err(load_err); // Propagate the error
+                        }
+                    }
+                }
+            }
+        }
+
+        log::debug!(
+            "GitHub load initialization check complete. Triggered: {}",
+            github_load_triggered
+        );
+        Ok(github_load_triggered)
+    }
 }
 
 impl VirtualFileSystem for VercelKvVfs {
@@ -116,5 +185,9 @@ impl VirtualFileSystem for VercelKvVfs {
         shallow: bool,
     ) -> impl std::future::Future<Output = Result<LoadDirectoryResult, VfsError>> {
         async move { self.load_github_directory_impl(shallow, false).await }
+    }
+
+    fn initialize_github_load(&self) -> impl std::future::Future<Output = Result<bool, VfsError>> {
+        async move { self.initialize_github_load_impl().await }
     }
 }

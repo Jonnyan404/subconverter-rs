@@ -13,6 +13,8 @@ on:
         description: 'Version to release (without v prefix)'
         required: true
         type: string
+  repository_dispatch:
+    types: [trigger-wasm-release]
 
 jobs:
   wasm_release:
@@ -39,22 +41,17 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Extract version from tag
-        if: startsWith(github.ref, 'refs/tags/')
-        id: extract-version-from-tag
-        run: |
-          TAG_NAME="${GITHUB_REF#refs/tags/}"
-          BASE_VERSION=$(echo $TAG_NAME | sed -E 's/v([0-9]+\.[0-9]+\.[0-9]+)(-[a-zA-Z0-9\.]+)?-attempt[0-9]+/\1\2/')
-          echo "version=$BASE_VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $BASE_VERSION from tag $TAG_NAME"
-
-      - name: Set version from input or tag
+      - name: Set version from input, tag or dispatch
         id: set-version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.event_name }}" == "repository_dispatch" && "${{ github.event.action }}" == "trigger-wasm-release" ]]; then
+            VERSION="${{ github.event.client_payload.version }}"
           else
-            VERSION="${{ steps.extract-version-from-tag.outputs.version }}"
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+            BASE_VERSION=$(echo $TAG_NAME | sed -E 's/v([0-9]+\.[0-9]+\.[0-9]+)(-[a-zA-Z0-9\.]+)?-attempt[0-9]+?/\1\2/')
+            VERSION="$BASE_VERSION"
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Final version for release: $VERSION"
@@ -115,7 +112,30 @@ jobs:
             cd www
             jq ".dependencies[\"subconverter-wasm\"] = \"$VERSION\"" package.json > tmp.json && mv tmp.json package.json
             npm install -g pnpm
-            pnpm install --no-frozen-lockfile
+            # pnpm install --no-frozen-lockfile
+            # Add retry logic for pnpm install
+            MAX_RETRIES=5
+            RETRY_DELAY=5 # seconds
+            RETRY_COUNT=0
+
+            echo "Running pnpm install in www (will retry up to $MAX_RETRIES times)..."
+            until pnpm install --no-frozen-lockfile; do
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+                    echo "Error: pnpm install failed after $MAX_RETRIES attempts."
+                    # Optionally fail the workflow step:
+                    # exit 1
+                    break # Or exit 1 to fail the step
+                fi
+                echo "pnpm install failed. Retrying in $RETRY_DELAY seconds (attempt $((RETRY_COUNT + 1))/$MAX_RETRIES)..."
+                sleep $RETRY_DELAY
+            done
+            # Check if pnpm install ultimately succeeded
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "pnpm install successful."
+            else
+              echo "pnpm install failed after retries. Continuing workflow..." # Or exit 1 if failure should stop the workflow
+            fi
             cd ..
           else
             echo "www/package.json not found, skipping update"
@@ -148,5 +168,5 @@ jobs:
         uses: peter-evans/repository-dispatch@v2
         with:
           token: ${{ secrets.PAT_TOKEN }}
-          event-type: wasm-release-completed
+          event-type: trigger-native-release
           client-payload: '{"version": "${{ steps.set-version.outputs.version }}"}'

@@ -1,11 +1,16 @@
 # subconverter-rs 使用指南
 
+<div align="center">
+
+<img src="www/public/logo.svg" alt="subconverter-rs logo" width="150">
+
 > 一个高性能代理订阅转换工具，从 C++ 版本的 subconverter 转换为 Rust 实现
 
 [![Rust](https://img.shields.io/badge/language-Rust-orange.svg)](https://www.rust-lang.org/)
 [![Status](https://img.shields.io/badge/status-beta-blue.svg)](https://github.com/lonelam/subconverter-rs)
 [![GPL-3.0+ License](https://img.shields.io/badge/license-GPL--3.0%2B-blue.svg)](LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/subconverter.svg)](https://crates.io/crates/subconverter)
+[![Telegram](https://img.shields.io/badge/Telegram-subconverter_rs-blue.svg)](https://t.me/subconverter_rs)
 
 ---
 
@@ -18,6 +23,40 @@ A more powerful utility to convert between proxy subscription formats, transform
 
 Demo部署，测试时请注意隐私风险：
 https://subconverter-rs.netlify.app/
+
+---
+
+## 📥 安装
+
+### 从 GitHub Releases 获取
+
+直接下载并运行辅助脚本 (需要 `curl` 和 `jq`):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/lonelam/subconverter-rs/main/scripts/setup_and_run_subconverter.sh | bash
+```
+此命令会下载最新版本，解压到 `subconverter` 目录，并启动服务。
+
+(或手动从 [Releases](https://github.com/lonelam/subconverter-rs/releases/latest) 下载)。
+
+### Docker
+```bash
+docker pull lonelam/subconverter-rs
+docker run -d -p 25500:25500 lonelam/subconverter-rs
+```
+
+### 从 Crates.io 获取
+```bash
+cargo install subconverter
+```
+
+### 从源码编译
+```bash
+git clone https://github.com/lonelam/subconverter-rs.git
+cd subconverter-rs
+cargo build --release --features=web-api
+```
+二进制文件将位于 `target/release/subconverter-rs`。
 
 ---
 
@@ -44,6 +83,7 @@ https://subconverter-rs.netlify.app/
 
 | 协议 \ 规则类型 | Clash | SingBox | Surge(2,3,4) | V2Ray | Quantumult | Quantumult X | Loon | Surfboard | Mellow | SIP002/8 | 混合(Mixed) | 类TG代理 |
 |--------------|:-----:|:-------:|:-----:|:-----:|:----------:|:------------:|:----:|:---------:|:------:|:--------:|:----------:|:-----:|
+| AnyTLS       | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | VLESS        | ✅ | ✅ | ⚠️ | ✅ | ❌ | ⚠️ | ⚠️ | ❌ | ❌ | ❌ | ⬇️ | ⬇️ |
 | Hysteria/2   | ✅ | ✅ | ⚠️ | ❌ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⬇️ | ⬇️ |
 | VMess        | ✅ | ✅ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ✅ | ⬇️ |
@@ -67,6 +107,16 @@ https://subconverter-rs.netlify.app/
 2. 类 TG 代理的 HTTP/Socks 链接由于没有命名设定，所以可以在后方插入 `&remarks=` 进行命名，同时也可以插入 `&group=` 设置组别名称，这两个参数需要经过 [URLEncode](https://www.urlencoder.org/) 处理
 3. 目标类型为 `mixed` 时，会输出所有支持的节点的单链接组成的普通订阅（Base64编码）
 4. 🚧目标类型为 `auto` 时，会根据请求的 `User-Agent` 自动判断输出的目标类型
+
+* * *
+
+## 🛣️ 未来计划
+
+以下是一些计划在未来版本中推出的功能：
+
+- **Gist 发布**: 自动将生成的配置上传到 GitHub Gist。
+- **AnyTLS 协议支持**: 添加对 AnyTLS 协议的支持。
+- **可视化规则组配置**: 实现用于配置规则组的图形界面。
 
 * * *
 

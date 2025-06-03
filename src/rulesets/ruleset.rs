@@ -1,7 +1,9 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use log::{debug, info, warn};
+#[cfg(not(target_arch = "wasm32"))]
+use futures::future::join_all;
+use log::{debug, info, warn}; // Import for parallel execution
 
 use crate::models::ruleset::{get_ruleset_type_from_url, RulesetContent, RulesetType};
 use crate::models::RulesetConfig;
@@ -77,7 +79,8 @@ async fn fetch_from_url(url: &str, proxy: &ProxyConfig) -> Result<String, String
     }
 }
 
-/// Refresh rulesets based on configuration
+/// Refresh rulesets based on configuration (Parallel version for non-WASM)
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn refresh_rulesets(
     ruleset_list: &[RulesetConfig],
     ruleset_content_array: &mut Vec<RulesetContent>,
@@ -89,40 +92,29 @@ pub async fn refresh_rulesets(
     let settings = Settings::current();
     let proxy = parse_proxy(&settings.proxy_ruleset);
 
-    // Collect inline rules first (these don't need fetching)
-    for ruleset_config in ruleset_list {
-        let rule_group = &ruleset_config.group;
-        let rule_url = &ruleset_config.url;
-
-        // Check if it's an inline rule (with [] prefix)
-        if let Some(pos) = rule_url.find("[]") {
-            info!(
-                "Adding rule '{}' with group '{}'",
-                &rule_url[pos + 2..],
-                rule_group
-            );
-
-            let mut ruleset = RulesetContent::new("", rule_group);
-            ruleset.set_rule_content(&rule_url[pos..]);
-            ruleset_content_array.push(ruleset);
-        }
-    }
-
     // Create a vector of boxed futures for parallel ruleset fetching
     let mut fetch_futures: Vec<Pin<Box<dyn Future<Output = FetchResult> + 'static>>> = Vec::new();
 
-    // Prepare futures for all non-inline rulesets
+    // Prepare futures for all rulesets (inline handled separately later)
     for ruleset_config in ruleset_list {
         let rule_group = ruleset_config.group.clone();
         let rule_url = ruleset_config.url.clone();
         let interval = ruleset_config.interval;
 
-        // Skip inline rules
-        if rule_url.contains("[]") {
-            continue;
+        // Handle inline rules directly
+        if let Some(pos) = rule_url.find("[]") {
+            info!(
+                "Adding inline rule '{}' with group '{}'",
+                &rule_url[pos + 2..],
+                &rule_group
+            );
+            let mut ruleset = RulesetContent::new("", &rule_group);
+            ruleset.set_rule_content(&rule_url[pos..]); // Use original url with "[]" prefix
+            ruleset_content_array.push(ruleset);
+            continue; // Skip fetching for inline rules
         }
 
-        // Determine ruleset type from URL
+        // Determine ruleset type from URL for fetchable rules
         if let Some(detected_type) = get_ruleset_type_from_url(&rule_url) {
             // Find prefix length and trim it from the URL
             for (prefix, prefix_type) in crate::models::ruleset::RULESET_TYPES.iter() {
@@ -137,8 +129,9 @@ pub async fn refresh_rulesets(
                     // Clone needed values for the future closure
                     let proxy_clone = proxy.clone();
                     let cache_ruleset = settings.cache_ruleset;
-                    let async_fetch = settings.async_fetch_ruleset;
+                    let async_fetch = settings.async_fetch_ruleset; // Note: async_fetch flag from settings might not be relevant anymore with parallel fetching
                     let fetch_url = rule_url_without_prefix.clone();
+                    let original_url_clone = rule_url.clone(); // Clone original URL
 
                     // Create the future and box it
                     let future = async move {
@@ -149,21 +142,21 @@ pub async fn refresh_rulesets(
                         FetchResult {
                             url: fetch_url,
                             group: rule_group,
-                            original_url: rule_url,
+                            original_url: original_url_clone, // Use cloned original URL
                             url_type: detected_type,
                             interval,
-                            content: content.ok(),
+                            content: content.ok(), // Convert Result to Option
                         }
                     };
 
                     fetch_futures.push(Box::pin(future));
-                    break;
+                    break; // Found matching prefix, move to next ruleset_config
                 }
             }
         } else {
             // No special prefix, use default type
             info!(
-                "Preparing ruleset URL '{}' with group '{}'",
+                "Preparing default ruleset URL '{}' with group '{}'",
                 rule_url, rule_group
             );
 
@@ -172,6 +165,7 @@ pub async fn refresh_rulesets(
             let cache_ruleset = settings.cache_ruleset;
             let async_fetch = settings.async_fetch_ruleset;
             let fetch_url = rule_url.clone();
+            let original_url_clone = rule_url.clone();
 
             // Create the future and box it
             let future = async move {
@@ -179,9 +173,9 @@ pub async fn refresh_rulesets(
                     fetch_ruleset(&fetch_url, &proxy_clone, cache_ruleset, async_fetch).await;
 
                 FetchResult {
-                    url: fetch_url.clone(),
+                    url: fetch_url, // Use fetch_url (which is same as original_url here)
                     group: rule_group,
-                    original_url: fetch_url,
+                    original_url: original_url_clone,
                     url_type: RulesetType::default(),
                     interval,
                     content: content.ok(),
@@ -192,19 +186,113 @@ pub async fn refresh_rulesets(
         }
     }
 
-    // Process each future sequentially (could be optimized to process in batches)
-    for future in fetch_futures {
-        let result = future.await;
+    // Execute all fetch futures in parallel and wait for results
+    let results = join_all(fetch_futures).await;
+
+    // Process results
+    for result in results {
         if let Some(content) = result.content {
             // Set ruleset properties
-            let mut ruleset = RulesetContent::new(&result.url, &result.group);
-            ruleset.rule_path_typed = result.original_url;
+            let mut ruleset = RulesetContent::new(&result.url, &result.group); // Use the fetched URL (without prefix)
+            ruleset.rule_path_typed = result.original_url; // Store the original URL with type prefix
             ruleset.rule_type = result.url_type;
             ruleset.update_interval = result.interval;
 
             // Set rule content
             ruleset.set_rule_content(&content);
             ruleset_content_array.push(ruleset);
+        } else {
+            // Log error if fetching failed
+            warn!(
+                "Failed to fetch ruleset content for original URL: {}",
+                result.original_url
+            );
+        }
+    }
+}
+
+/// Refresh rulesets based on configuration (Sequential version for WASM)
+#[cfg(target_arch = "wasm32")]
+pub async fn refresh_rulesets(
+    ruleset_list: &[RulesetConfig],
+    ruleset_content_array: &mut Vec<RulesetContent>,
+) {
+    // Clear existing ruleset content
+    ruleset_content_array.clear();
+
+    // Get global settings
+    let settings = Settings::current();
+    let proxy = parse_proxy(&settings.proxy_ruleset);
+
+    // Process rulesets sequentially
+    for ruleset_config in ruleset_list {
+        let rule_group = ruleset_config.group.clone();
+        let rule_url = ruleset_config.url.clone();
+        let interval = ruleset_config.interval;
+
+        // Handle inline rules directly
+        if let Some(pos) = rule_url.find("[]") {
+            info!(
+                "Adding inline rule '{}' with group '{}'",
+                &rule_url[pos + 2..],
+                &rule_group
+            );
+            let mut ruleset = RulesetContent::new("", &rule_group);
+            ruleset.set_rule_content(&rule_url[pos..]);
+            ruleset_content_array.push(ruleset);
+            continue; // Move to next ruleset config
+        }
+
+        // Prepare fetch for non-inline rules
+        let mut fetch_url = rule_url.clone();
+        let mut detected_type = RulesetType::default();
+        let original_url = rule_url.clone(); // Keep original URL for FetchResult
+
+        if let Some(dtype) = get_ruleset_type_from_url(&rule_url) {
+            detected_type = dtype;
+            // Find prefix and trim URL
+            for (prefix, prefix_type) in crate::models::ruleset::RULESET_TYPES.iter() {
+                if rule_url.starts_with(prefix) && *prefix_type == detected_type {
+                    fetch_url = rule_url[prefix.len()..].to_string();
+                    info!(
+                        "Preparing {} ruleset URL '{}' with group '{}' (Sequential)",
+                        prefix, fetch_url, rule_group
+                    );
+                    break;
+                }
+            }
+        } else {
+            info!(
+                "Preparing default ruleset URL '{}' with group '{}' (Sequential)",
+                fetch_url, rule_group
+            );
+        }
+
+        // Fetch the ruleset content sequentially
+        let proxy_clone = proxy.clone();
+        let cache_ruleset = settings.cache_ruleset;
+        let async_fetch = settings.async_fetch_ruleset; // This flag might be less relevant now, but kept for consistency
+
+        let content_result =
+            fetch_ruleset(&fetch_url, &proxy_clone, cache_ruleset, async_fetch).await;
+
+        // Process the result
+        match content_result {
+            Ok(content) => {
+                let mut ruleset = RulesetContent::new(&fetch_url, &rule_group); // Use fetched URL
+                ruleset.rule_path_typed = original_url; // Store original URL
+                ruleset.rule_type = detected_type;
+                ruleset.update_interval = interval;
+                ruleset.set_rule_content(&content);
+                ruleset_content_array.push(ruleset);
+            }
+            Err(e) => {
+                // Log error if fetching failed
+                warn!(
+                    "Failed to fetch ruleset content for original URL: {} - Error: {}",
+                    original_url, e
+                );
+            }
         }
     }
 }

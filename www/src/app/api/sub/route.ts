@@ -21,7 +21,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Construct a JSON query object from URL parameters
-    const params = Object.fromEntries(request.nextUrl.searchParams);
+    const params: any = Object.fromEntries(request.nextUrl.searchParams);
+    const requestHeaders = Object.fromEntries(request.headers.entries());
+    params['request_headers'] = requestHeaders;
+
+    // Normalize the 'url' parameter if it exists
+    if (typeof params.url === 'string') {
+        const urls = params.url.split(/\n|\|/).map((u: string) => u.trim()).filter(Boolean);
+        params.url = urls.join('|');
+    }
 
     if (!params.target) {
         return NextResponse.json(
@@ -92,9 +100,19 @@ export async function POST(request: NextRequest) {
     try {
         // Parse request body as JSON
         const paramsJsonStr = await request.text();
+        const params = JSON.parse(paramsJsonStr);
+
+        // Normalize the 'url' parameter if it exists in the body
+        if (typeof params.url === 'string') {
+            const urls = params.url.split(/\n|\|/).map((u: string) => u.trim()).filter(Boolean);
+            params.url = urls.join('|');
+        }
+
+        // Convert the potentially modified params back to JSON string
+        const finalParamsJsonStr = JSON.stringify(params);
 
         // Call the WASM function to process the subscription
-        const responsePromise = wasmModule.sub_process_wasm(paramsJsonStr);
+        const responsePromise = wasmModule.sub_process_wasm(finalParamsJsonStr);
 
         // Wait for the Promise to resolve
         const responseJsonString = await responsePromise;

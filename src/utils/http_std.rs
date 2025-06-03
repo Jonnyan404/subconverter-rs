@@ -1,11 +1,9 @@
 use crate::utils::system::get_system_proxy;
+use awc::Client;
 use case_insensitive_string::CaseInsensitiveString;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::time::Duration;
-
-use reqwest::{Client, Proxy, StatusCode};
-
 /// Default timeout for HTTP requests in seconds
 const DEFAULT_TIMEOUT: u64 = 15;
 
@@ -87,46 +85,39 @@ pub async fn web_get_async(
     headers: Option<&HashMap<CaseInsensitiveString, String>>,
 ) -> Result<HttpResponse, HttpError> {
     // Build client with proxy if specified
-    let mut client_builder = Client::builder()
-        .timeout(Duration::from_secs(DEFAULT_TIMEOUT))
-        .user_agent("subconverter-rs");
 
-    if let Some(proxy) = &proxy_config.proxy {
-        if !proxy.is_empty() {
-            match Proxy::all(proxy) {
-                Ok(proxy) => {
-                    client_builder = client_builder.proxy(proxy);
-                }
-                Err(e) => {
-                    return Err(HttpError {
-                        message: format!("Failed to set proxy: {}", e),
-                        status: None,
-                    });
-                }
-            }
-        }
-    }
+    let mut client_builder = Client::builder().timeout(Duration::from_secs(DEFAULT_TIMEOUT));
 
-    let client = match client_builder.build() {
-        Ok(client) => client,
-        Err(e) => {
-            return Err(HttpError {
-                message: format!("Failed to build HTTP client: {}", e),
-                status: None,
-            });
-        }
-    };
+    // if let Some(proxy) = &proxy_config.proxy {
+    //     if !proxy.is_empty() {
+    //         match Proxy::all(proxy) {
+    //             Ok(proxy) => {
+    //                 client_builder = client_builder.proxy(proxy);
+    //             }
+    //             Err(e) => {
+    //                 return Err(HttpError {
+    //                     message: format!("Failed to set proxy: {}", e),
+    //                     status: None,
+    //                 });
+    //             }
+    //         }
+    //     }
+    // }
+
+    let client = client_builder.finish();
 
     // Build request with headers if specified
-    let mut request_builder = client.get(url);
+    let mut client_request = client
+        .get(url)
+        .insert_header(("User-Agent", "subconverter-rs"));
     if let Some(custom_headers) = headers {
         for (key, value) in custom_headers {
-            request_builder = request_builder.header(key.to_string(), value);
+            client_request = client_request.insert_header((key.to_string(), value.to_string()));
         }
     }
 
     // Send request and get response
-    let response = match request_builder.send().await {
+    let mut response = match client_request.send().await {
         Ok(resp) => resp,
         Err(e) => {
             return Err(HttpError {
@@ -148,10 +139,10 @@ pub async fn web_get_async(
     }
 
     // Get response body, even for error responses
-    match response.text().await {
+    match response.body().await {
         Ok(body) => Ok(HttpResponse {
             status,
-            body,
+            body: String::from_utf8(body.to_vec()).unwrap(),
             headers: resp_headers,
         }),
         Err(e) => Err(HttpError {
@@ -161,7 +152,8 @@ pub async fn web_get_async(
     }
 }
 
-/// Synchronous version of web_get_async that uses tokio runtime to run the async function
+/// Synchronous version of web_get_async that uses tokio runtime to run the
+/// async function
 ///
 /// This function is provided for compatibility with the existing codebase.
 pub fn web_get(
@@ -189,7 +181,8 @@ pub fn web_get(
 
 /// Asynchronous function that returns only the body content if status is 2xx,
 /// otherwise treats as error
-/// This provides backward compatibility with code expecting only successful responses
+/// This provides backward compatibility with code expecting only successful
+/// responses
 pub async fn web_get_content_async(
     url: &str,
     proxy_config: &ProxyConfig,
@@ -290,5 +283,144 @@ pub fn get_sub_info_from_response(
         true
     } else {
         false
+    }
+}
+
+/// Makes an HTTP POST request to the specified URL
+///
+/// # Arguments
+/// * `url` - The URL to request
+/// * `data` - The request body data
+/// * `proxy_config` - Proxy configuration
+/// * `headers` - Optional custom headers
+///
+/// # Returns
+/// * `Ok(HttpResponse)` - The response with status, body, and headers
+/// * `Err(HttpError)` - Error details if the request failed
+pub async fn web_post_async(
+    url: &str,
+    data: String,
+    proxy_config: &ProxyConfig,
+    headers: Option<&HashMap<CaseInsensitiveString, String>>,
+) -> Result<HttpResponse, HttpError> {
+    let mut client_builder = Client::builder().timeout(Duration::from_secs(DEFAULT_TIMEOUT));
+
+    // TODO: Implement proxy support for awc if needed, similar to commented-out
+    // code in web_get_async if let Some(proxy) = &proxy_config.proxy {
+    //     if !proxy.is_empty() { ... }
+    // }
+
+    let client = client_builder.finish();
+
+    let mut client_request = client
+        .post(url)
+        .insert_header(("Content-Type", "application/json")); // Assume JSON for POST/PATCH
+
+    if let Some(custom_headers) = headers {
+        for (key, value) in custom_headers {
+            client_request = client_request.insert_header((key.to_string(), value.to_string()));
+        }
+    }
+
+    // Send request with body
+    let mut response = match client_request.send_body(data).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            return Err(HttpError {
+                message: format!("Failed to send POST request: {}", e),
+                status: None,
+            });
+        }
+    };
+
+    let status = response.status().as_u16();
+
+    let mut resp_headers = HashMap::new();
+    for (key, value) in response.headers() {
+        if let Ok(v) = value.to_str() {
+            resp_headers.insert(key.to_string(), v.to_string());
+        }
+    }
+
+    match response.body().limit(10_000_000).await {
+        // Limit body size (e.g., 10MB)
+        Ok(body) => Ok(HttpResponse {
+            status,
+            body: String::from_utf8(body.to_vec())
+                .unwrap_or_else(|_| "Invalid UTF-8 body".to_string()),
+            headers: resp_headers,
+        }),
+        Err(e) => Err(HttpError {
+            message: format!("Failed to read POST response body: {}", e),
+            status: Some(status),
+        }),
+    }
+}
+
+/// Makes an HTTP PATCH request to the specified URL
+///
+/// # Arguments
+/// * `url` - The URL to request
+/// * `data` - The request body data
+/// * `proxy_config` - Proxy configuration
+/// * `headers` - Optional custom headers
+///
+/// # Returns
+/// * `Ok(HttpResponse)` - The response with status, body, and headers
+/// * `Err(HttpError)` - Error details if the request failed
+pub async fn web_patch_async(
+    url: &str,
+    data: String,
+    proxy_config: &ProxyConfig,
+    headers: Option<&HashMap<CaseInsensitiveString, String>>,
+) -> Result<HttpResponse, HttpError> {
+    let mut client_builder = Client::builder().timeout(Duration::from_secs(DEFAULT_TIMEOUT));
+
+    // TODO: Implement proxy support for awc if needed
+
+    let client = client_builder.finish();
+
+    let mut client_request = client
+        .patch(url)
+        .insert_header(("Content-Type", "application/json")); // Assume JSON
+
+    if let Some(custom_headers) = headers {
+        for (key, value) in custom_headers {
+            client_request = client_request.insert_header((key.to_string(), value.to_string()));
+        }
+    }
+
+    // Send request with body
+    let mut response = match client_request.send_body(data).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            return Err(HttpError {
+                message: format!("Failed to send PATCH request: {}", e),
+                status: None,
+            });
+        }
+    };
+
+    let status = response.status().as_u16();
+
+    let mut resp_headers = HashMap::new();
+    for (key, value) in response.headers() {
+        if let Ok(v) = value.to_str() {
+            resp_headers.insert(key.to_string(), v.to_string());
+        }
+    }
+
+    match response.body().limit(10_000_000).await {
+        // Limit body size
+        Ok(body) => Ok(HttpResponse {
+            status,
+            body: String::from_utf8(body.to_vec())
+                .unwrap_or_else(|_| "Invalid UTF-8 body".to_string()),
+            headers: resp_headers,
+        }),
+        Err(e) => Err(HttpError {
+            message: format!("Failed to read PATCH response body: {}", e),
+            status: Some(status),
+        }),
     }
 }

@@ -1,0 +1,54 @@
+name: Auto Patch and Release WASM
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+jobs:
+  prepare_and_trigger_release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # To push commits and tags
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required for version bumping and tagging
+          token: ${{ secrets.PAT_TOKEN }} # Use PAT for triggering workflows
+
+      - name: Setup Git User
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Or specify your desired Node.js version
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Run build script to bump patch and prepare release
+        id: build_script
+        run: ./scripts/build-wasm.sh --bump-patch
+
+      # - name: Trigger WASM Release Workflow
+      #   uses: peter-evans/repository-dispatch@v2
+      #   with:
+      #     token: ${{ secrets.PAT_TOKEN }}
+      #     event-type: trigger-wasm-release
+      #     client-payload: '{"version": "${{ steps.build_script.outputs.new_version }}"}' 

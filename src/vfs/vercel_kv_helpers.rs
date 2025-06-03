@@ -77,6 +77,7 @@ pub fn get_parent_directory(path: &str) -> String {
 }
 
 /// Extracts the filename from a path
+/// This should return only the filename part, without any directory prefix.
 ///
 /// # Arguments
 /// * `path` - The path to extract the filename from
@@ -87,7 +88,7 @@ pub fn get_filename(path: &str) -> String {
     let path = path.trim_end_matches('/');
     let filename = match path.rfind('/') {
         Some(idx) => path[idx + 1..].to_string(),
-        None => path.to_string(),
+        None => path.to_string(), // If no slash, the whole path is the filename
     };
     // log_debug!("Filename from path '{}': '{}'", path, filename);
     filename
@@ -124,6 +125,7 @@ pub fn get_key_with_suffix(path: &str, suffix: &str) -> String {
 /// # Returns
 /// A content key string for KV storage
 pub fn get_content_key(path: &str) -> String {
+    
     get_key_with_suffix(path, FILE_CONTENT_SUFFIX)
 }
 
@@ -134,9 +136,9 @@ pub fn get_content_key(path: &str) -> String {
 ///
 /// # Returns
 /// A metadata key string for KV storage
-pub fn get_metadata_key(path: &str) -> String {
-    get_key_with_suffix(path, FILE_METADATA_SUFFIX)
-}
+// pub fn get_metadata_key(path: &str) -> String {
+//     get_key_with_suffix(path, FILE_METADATA_SUFFIX)
+// }
 
 /// Generates the status key for a file path
 ///
@@ -145,9 +147,9 @@ pub fn get_metadata_key(path: &str) -> String {
 ///
 /// # Returns
 /// A status key string for KV storage
-pub fn get_status_key(path: &str) -> String {
-    get_key_with_suffix(path, FILE_STATUS_SUFFIX)
-}
+// pub fn get_status_key(path: &str) -> String {
+//     get_key_with_suffix(path, FILE_STATUS_SUFFIX)
+// }
 
 /// Generates the directory marker key for a directory path
 ///
@@ -157,13 +159,18 @@ pub fn get_status_key(path: &str) -> String {
 /// # Returns
 /// A directory marker key string for KV storage
 pub fn get_directory_marker_key(path: &str) -> String {
-    // Fix: Properly handle directory marker suffix for empty or directory paths
-    if path.is_empty() || path.ends_with('/') {
-        // For directories, use the suffix without the leading slash
-        get_key_with_suffix(path, DIRECTORY_MARKER_SUFFIX.trim_start_matches('/'))
+    // Ensure the path ends with a slash if it's not empty, then append @@dir
+    let normalized = normalize_path(path);
+    if normalized.is_empty() {
+        // Root directory marker
+        DIRECTORY_MARKER_SUFFIX.trim_start_matches('/').to_string()
     } else {
-        // For regular files, use the full suffix
-        get_key_with_suffix(path, DIRECTORY_MARKER_SUFFIX)
+        // Append @@dir to the normalized path, ensuring it ends with /
+        format!(
+            "{}{}",
+            normalized.trim_end_matches('/'),
+            DIRECTORY_MARKER_SUFFIX
+        )
     }
 }
 

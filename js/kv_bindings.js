@@ -2,6 +2,13 @@
 // Ensure @vercel/kv or @netlify/blobs is installed in your project dependencies (package.json)
 // Ensures fallback for local development when neither Vercel KV nor Netlify Blobs are available
 
+// --- Configuration ---
+const CURRENT_STORAGE_VERSION = 1; // Increment this when making breaking changes
+const VERCEL_KV_PREFIX = `v${CURRENT_STORAGE_VERSION}`;
+const NETLIFY_STORE_NAME = `subconverter-data-v${CURRENT_STORAGE_VERSION}`;
+
+// ---------------------
+
 // Expose the localStorageMap for debugging
 let localStorageMap = new Map(); // Local in-memory fallback
 let kv; // Lazy load KV
@@ -13,6 +20,7 @@ let envCache = new Map();
 function isNetlifyEnvironment() {
     return typeof process !== 'undefined' &&
         process.env.NETLIFY === 'true' ||
+        process.env.NETLIFY_BLOBS_CONTEXT != undefined ||
         (process.cwd && process.cwd() === '/var/task');
 }
 
@@ -58,17 +66,36 @@ async function getKv() {
             if (typeof process !== 'undefined' &&
                 process.env.KV_REST_API_URL &&
                 process.env.KV_REST_API_TOKEN) {
-                // Dynamic import for environments where top-level await might not be supported
                 const vercelKv = require('@vercel/kv');
-                kv = vercelKv.kv;
-                console.log("Using Vercel KV for storage");
+                const baseKv = vercelKv.kv; // Get the base client
+                console.log("Using Vercel KV for storage (version prefix: ", VERCEL_KV_PREFIX, ")");
+
+                // Create adapter with version prefixing
+                kv = {
+                    _baseKv: baseKv,
+                    get: (key) => baseKv.get(`${VERCEL_KV_PREFIX}/${key}`),
+                    set: (key, value) => baseKv.set(`${VERCEL_KV_PREFIX}/${key}`, value),
+                    exists: (key) => baseKv.exists(`${VERCEL_KV_PREFIX}/${key}`),
+                    del: (key) => baseKv.del(`${VERCEL_KV_PREFIX}/${key}`),
+                    scan: async (cursor, options = {}) => {
+                        const { match = "*", count = 10 } = options;
+                        // Adapt the match pattern to include the prefix
+                        const prefixedMatch = `${VERCEL_KV_PREFIX}/${match}`;
+                        const [nextCursor, keys] = await baseKv.scan(cursor, { match: prefixedMatch, count });
+                        // Remove prefix from returned keys
+                        const unprefixedKeys = keys.map(k => k.startsWith(VERCEL_KV_PREFIX + '/') ? k.substring(VERCEL_KV_PREFIX.length + 1) : k);
+                        return [nextCursor, unprefixedKeys];
+                    }
+                };
+
             }
             // Check for Netlify Blobs environment
             else if (isNetlifyEnvironment()) {
                 try {
                     const { getStore } = require('@netlify/blobs');
-                    const store = getStore('subconverter-data');
+                    const store = getStore(NETLIFY_STORE_NAME); // Use versioned store name
                     isNetlifyBlobs = true;
+                    console.log("Using Netlify Blobs for storage (store: ", NETLIFY_STORE_NAME, ")");
 
                     // Create adapter to match Vercel KV interface
                     kv = {
@@ -78,7 +105,6 @@ async function getKv() {
                                 const value = await store.get(key, { type: 'arrayBuffer' });
                                 return value ? new Uint8Array(value) : null;
                             } catch (error) {
-                                // Key not found returns null to match Vercel KV behavior
                                 if (error.message.includes('not found')) {
                                     return null;
                                 }
@@ -90,68 +116,34 @@ async function getKv() {
                             await store.set(key, value);
                             return "OK";
                         },
-                        // Check if a key exists - Netlify doesn't have direct exists method
+                        // Check if a key exists
                         exists: async (key) => {
                             try {
-                                // Try to get metadata only (more efficient than getting actual data)
                                 const metadata = await store.getMetadata(key);
                                 return metadata ? 1 : 0;
                             } catch (error) {
                                 return 0;
                             }
                         },
-                        // Scan keys with pattern matching
+                        // Scan keys with pattern matching - Netlify Blobs prefix scan is efficient
                         scan: async (cursor, options = {}) => {
                             const { match = "*", count = 10 } = options;
-
-                            // List all blobs (Netlify doesn't support cursor-based pagination natively)
-                            // We'll implement cursor pagination on top of the list method
-                            let allKeys;
-
-                            // If we haven't started scanning yet (cursor = 0), get all keys
-                            if (cursor === 0 || cursor === '0') {
-                                // If matching starts with a prefix and ends with wildcard, use prefix directly
-                                const prefix = match.endsWith('*') ? match.slice(0, -1) : '';
-                                const list = await store.list({ prefix });
-                                allKeys = list.blobs.map(blob => blob.key);
-
-                                // If we're using an actual regex pattern (not just prefix*), filter the results
-                                if (match !== "*" && !match.match(/^[^*]+\*$/)) {
-                                    // Convert glob pattern to regex (simplistic approach)
-                                    const pattern = match.replace(/\*/g, ".*");
-                                    const regex = new RegExp(`^${pattern}$`);
-                                    allKeys = allKeys.filter(key => regex.test(key));
-                                }
-
-                                // Store the full key list in localStorageMap with a special key
-                                // This lets us retrieve it on subsequent scan calls
-                                const scanId = `__scan_${Date.now()}`;
-                                localStorageMap.set(scanId, allKeys);
-
-                                // Return first batch and cursor
-                                const batch = allKeys.slice(0, count);
-                                const nextCursor = allKeys.length > count ? `${scanId}:${count}` : '0';
-                                return [nextCursor, batch];
-                            } else {
-                                // Parse the cursor to get scan ID and position
-                                const [scanId, position] = cursor.split(':');
-                                allKeys = localStorageMap.get(scanId) || [];
-                                const startIndex = parseInt(position);
-                                const endIndex = Math.min(startIndex + count, allKeys.length);
-                                const batch = allKeys.slice(startIndex, endIndex);
-
-                                // Return next cursor or '0' if we're done
-                                const nextCursor = endIndex < allKeys.length ? `${scanId}:${endIndex}` : '0';
-
-                                // Clean up if we're done
-                                if (nextCursor === '0') {
-                                    localStorageMap.delete(scanId);
-                                }
-
-                                return [nextCursor, batch];
+                            // Netlify list uses prefix, not glob. We'll filter later if needed.
+                            const prefix = match.endsWith('*') ? match.slice(0, -1) : '';
+                            // We ignore the cursor for Netlify list as it returns all matching keys
+                            // Pagination would need custom implementation if required beyond simple prefix listing
+                            const list = await store.list({ prefix });
+                            let keys = list.blobs.map(blob => blob.key);
+                            // If a more complex pattern was given, filter client-side
+                            if (match !== "*" && !match.endsWith('*')) {
+                                const pattern = match.replace(/\*/g, ".*");
+                                const regex = new RegExp(`^${pattern}$`);
+                                keys = keys.filter(key => regex.test(key));
                             }
+                            // Return result mimicking Vercel KV scan (cursor 0 means done for this simple impl)
+                            return ['0', keys.slice(0, count)];
                         },
-                        // Store reference for direct access to the Netlify Blobs store
+                        // Store reference for direct access
                         _store: store,
                         // Delete a key
                         del: async (key) => {
@@ -164,66 +156,40 @@ async function getKv() {
                             }
                         }
                     };
-                    console.log("Using Netlify Blobs for storage");
                 } catch (error) {
                     console.warn("Error initializing Netlify Blobs:", error);
                     throw error; // Let the fallback handle it
                 }
             } else {
-                // Use local storage fallback
-                console.log("No KV storage environment detected, using in-memory fallback");
+                // Use local storage fallback (remains unversioned)
+                console.log("No KV storage environment detected, using in-memory fallback (unversioned)");
                 // Create an in-memory implementation that mimics the Vercel KV API
                 kv = {
-                    // Get a value by key
-                    get: async (key) => {
-                        return localStorageMap.get(key) || null;
-                    },
-                    // Set a key-value pair
-                    set: async (key, value) => {
-                        localStorageMap.set(key, value);
-                        return "OK";
-                    },
-                    // Check if a key exists
-                    exists: async (key) => {
-                        return localStorageMap.has(key) ? 1 : 0;
-                    },
-                    // Scan keys with pattern matching
+                    get: async (key) => localStorageMap.get(key) || null,
+                    set: async (key, value) => { localStorageMap.set(key, value); return "OK"; },
+                    exists: async (key) => localStorageMap.has(key) ? 1 : 0,
                     scan: async (cursor, options = {}) => {
                         const { match = "*", count = 10 } = options;
-
-                        // Convert glob pattern to regex
                         const pattern = match.replace(/\*/g, ".*");
                         const regex = new RegExp(`^${pattern}$`);
-
-                        // Get all keys that match the pattern
                         const allKeys = [...localStorageMap.keys()];
                         const matchingKeys = allKeys.filter(key => regex.test(key));
-
-                        // Implement cursor-based pagination
                         const startIndex = parseInt(cursor) || 0;
                         const endIndex = Math.min(startIndex + count, matchingKeys.length);
                         const keys = matchingKeys.slice(startIndex, endIndex);
-
-                        // Return next cursor or '0' if we're done
                         const nextCursor = endIndex < matchingKeys.length ? String(endIndex) : '0';
-
                         return [nextCursor, keys];
                     },
-                    // Delete a key
-                    del: async (key) => {
-                        return localStorageMap.delete(key) ? 1 : 0;
-                    }
+                    del: async (key) => localStorageMap.delete(key) ? 1 : 0
                 };
             }
         } catch (error) {
-            console.warn("Error initializing storage, using in-memory fallback:", error);
+            // Error during initialization, use fallback (remains unversioned)
+            console.warn("Error initializing storage, using in-memory fallback (unversioned):", error);
             // Create an in-memory implementation that mimics the Vercel KV API
             kv = {
                 get: async (key) => localStorageMap.get(key) || null,
-                set: async (key, value) => {
-                    localStorageMap.set(key, value);
-                    return "OK";
-                },
+                set: async (key, value) => { localStorageMap.set(key, value); return "OK"; },
                 exists: async (key) => localStorageMap.has(key) ? 1 : 0,
                 scan: async (cursor, options = {}) => {
                     const { match = "*", count = 10 } = options;
@@ -256,24 +222,98 @@ async function kv_get(key) {
         if (value instanceof ArrayBuffer) {
             return new Uint8Array(value);
         } else if (ArrayBuffer.isView(value) && !(value instanceof DataView)) {
+            // Handles Uint8Array from in-memory fallback or Netlify Blobs
+            return value;
+        } else if (typeof value === 'string') {
+            // Vercel KV might return a string for non-binary data
             return value;
         }
 
         return value === null ? undefined : value;
     } catch (error) {
         console.error(`KV get error for ${key}:`, error);
-        return undefined;
+        // Re-throw or return specific error indicator if needed
+        throw new Error(`Failed to get key ${key}: ${error.message}`);
     }
 }
 
-// Both Vercel KV and Netlify Blobs can handle binary data
-// We'll trust the adapter to handle Uint8Array values appropriately
+async function kv_get_text(key) {
+    try {
+        const kvClient = await getKv();
+        // Vercel KV, Netlify Blobs, and fallback stores might return strings or binary data
+        if (kvClient._baseKv && typeof kvClient._baseKv.get === 'function') {
+            // Vercel KV: Use get, it should return string or null
+            const value = await kvClient._baseKv.get(`${VERCEL_KV_PREFIX}/${key}`);
+            // Ensure it's a string or return undefined if null/not string
+            return (typeof value === 'string') ? value : undefined;
+        } else if (isNetlifyBlobs && kvClient._store && typeof kvClient._store.get === 'function') {
+            // Netlify Blobs: Get as text
+            const value = await kvClient._store.get(key, { type: "text" });
+            return value === null ? undefined : value; // Already a string or null
+        } else {
+            // Fallback: Get potentially as bytes and decode
+            const rawValue = await kv_get(key);
+            if (rawValue === undefined || rawValue === null) {
+                return undefined;
+            }
+            let textValue;
+            if (rawValue instanceof Uint8Array) {
+                textValue = new TextDecoder().decode(rawValue);
+            } else if (typeof rawValue === 'string') {
+                textValue = rawValue;
+            } else { // Should not happen with kv_get logic, but handle defensively
+                console.warn(`kv_get_text: KV fallback returned unexpected type for key ${key}:`, typeof rawValue);
+                return undefined;
+            }
+            return textValue;
+        }
+    } catch (error) {
+        // Log errors, especially if it's not a simple 'not found'
+        if (error.message && error.message.includes('not found')) {
+            console.debug(`KV get_text: Key ${key} not found.`);
+            return undefined; // Indicate not found
+        }
+        console.error(`KV get_text error for ${key}:`, error);
+        throw new Error(`Failed to get text for key ${key}: ${error.message}`);
+    }
+}
+
+// Both Vercel KV and Netlify Blobs can handle binary data or JSON directly
+// We'll trust the adapter to handle Uint8Array/JSON values appropriately
 async function kv_set(key, value /* Uint8Array from Rust */) {
     try {
         const kvClient = await getKv();
         await kvClient.set(key, value);
     } catch (error) {
         console.error(`KV set error for ${key}:`, error);
+        throw new Error(`Failed to set key ${key}: ${error.message}`);
+    }
+}
+
+async function kv_set_text(key, value /* String from Rust */) {
+    try {
+        const kvClient = await getKv();
+        // Pass the string value directly to the underlying store
+        if (kvClient._baseKv && typeof kvClient._baseKv.set === 'function') {
+            // Vercel KV: Use prefix and set string directly
+            await kvClient._baseKv.set(`${VERCEL_KV_PREFIX}/${key}`, value);
+        } else if (isNetlifyBlobs && kvClient._store && typeof kvClient._store.set === 'function') {
+            // Netlify Blobs: Use set with string (implicitly handles encoding)
+            await kvClient._store.set(key, value);
+        }
+        else {
+            // Fallback: Use the kvClient.set which handles memory/byte conversion
+            // Determine if the underlying kv.set expects string or Uint8Array
+            if (kvClient.set === localStorageMap.set) { // Check if it's the in-memory fallback
+                await kvClient.set(key, value); // In-memory stores string
+            } else {
+                // Assume other fallbacks might need bytes
+                await kvClient.set(key, new TextEncoder().encode(value));
+            }
+        }
+    } catch (error) {
+        console.error(`KV set_text error for ${key}:`, error);
+        throw new Error(`Failed to set text for key ${key}: ${error.message}`);
     }
 }
 
@@ -386,6 +426,7 @@ async function wasm_fetch_with_request(url, options) {
 
         // Use the method from options or default to GET
         const method = options && options.method ? options.method : 'GET';
+        const body = options && options.body ? options.body : undefined;
 
         // Use either global fetch (Node.js 18+) or require node-fetch
         let fetchFunc = fetch;
@@ -402,6 +443,7 @@ async function wasm_fetch_with_request(url, options) {
         const response = await fetchFunc(url, {
             method,
             headers,
+            body,
             // Add other options as needed
         });
 
@@ -439,10 +481,36 @@ function dummy() {
     return "dummy";
 }
 
+// --- Migration Placeholder --- 
+
+/**
+ * Migrates data from an old storage version to the current version.
+ * This is a placeholder and needs to be implemented when a migration is required.
+ * 
+ * @param {number} oldVersion The version detected in storage.
+ * @param {number} newVersion The current storage version defined in the code.
+ */
+async function migrateStorage(oldVersion, newVersion) {
+    console.warn(`Storage migration needed from v${oldVersion} to v${newVersion}. Migration logic not implemented yet.`);
+    // Example steps:
+    // 1. Get access to the old version's store/client (e.g., using getStore(`...v${oldVersion}`))
+    // 2. List keys from the old store.
+    // 3. For each key/value:
+    //    a. Read from old store.
+    //    b. Transform data if necessary.
+    //    c. Write to the *new* version's store (using the main `getKv()` which points to the new version).
+    //    d. Optionally, delete from the old store after successful migration.
+    // 4. Handle errors carefully.
+    // 5. Update the storage version marker only after successful migration.
+
+    // Placeholder implementation - does nothing currently
+    await Promise.resolve(); // Simulate async operation
+}
+
 // Export all functions using CommonJS syntax
 module.exports = {
     localStorageMap,
-    getKv,
+    getKv, // Expose getKv which now handles versioning internally
     kv_get,
     kv_set,
     kv_exists,
@@ -455,5 +523,8 @@ module.exports = {
     response_headers,
     response_text,
     getenv,
-    dummy
+    dummy,
+    migrateStorage, // Expose migrate function if needed externally
+    kv_get_text,
+    kv_set_text,
 }; 

@@ -1,3 +1,4 @@
+pub mod clash_input_anytls;
 pub mod clash_input_http;
 pub mod clash_input_hysteria;
 pub mod clash_input_hysteria2;

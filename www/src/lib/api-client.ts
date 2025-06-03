@@ -834,3 +834,20 @@ export async function initSettings(prefPath: string = ''): Promise<boolean> {
         };
     }
 }
+
+/**
+ * Initializes the Subconverter Webapp VFS.
+ * Calls the /api/init endpoint.
+ * Returns true if the GitHub load was triggered (likely first run), false otherwise.
+ */
+export async function initializeWebApp(): Promise<{ success: boolean; githubLoadTriggered: boolean; message: string }> {
+    const response = await fetch('/api/init');
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.details || data.error || `Failed to initialize webapp: ${response.statusText}`);
+    }
+
+    return data;
+}

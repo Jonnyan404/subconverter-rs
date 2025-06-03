@@ -32,10 +32,13 @@ pub struct RegexMatchRuleInToml {
 
 impl Into<RegexMatchConfig> for RegexMatchRuleInToml {
     fn into(self) -> RegexMatchConfig {
-        RegexMatchConfig {
-            _match: self.match_str.unwrap_or_default(),
-            replace: self.replace.unwrap_or_default(),
-        }
+        let mut config = RegexMatchConfig::new(
+            self.match_str.unwrap_or_default(),
+            self.replace.unwrap_or_default(),
+            self.script.unwrap_or_default(),
+        );
+        config.compile();
+        config
     }
 }
 

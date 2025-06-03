@@ -38,10 +38,14 @@ fn map_vfs_error(e: VfsError) -> io::Error {
         VfsError::NotFound(msg) => io::Error::new(io::ErrorKind::NotFound, msg),
         VfsError::ConfigError(msg) => io::Error::new(io::ErrorKind::InvalidInput, msg),
         VfsError::StorageError(msg) => io::Error::new(io::ErrorKind::Other, msg),
-        VfsError::NetworkError(err) => io::Error::new(io::ErrorKind::Other, err),
-        VfsError::IoError(err) => err, // Pass through existing IO errors
-        VfsError::IsDirectory(path) => io::Error::new(io::ErrorKind::IsADirectory, path),
-        VfsError::NotDirectory(path) => io::Error::new(io::ErrorKind::NotADirectory, path),
+        VfsError::NetworkError(msg) => io::Error::new(io::ErrorKind::NotConnected, msg),
+        VfsError::IoError(err) => err,
+        VfsError::IsDirectory(msg) => io::Error::new(io::ErrorKind::Other, msg),
+        VfsError::NotDirectory(msg) => io::Error::new(io::ErrorKind::Other, msg),
+        VfsError::PermissionDenied(msg) => io::Error::new(io::ErrorKind::PermissionDenied, msg),
+        VfsError::AlreadyExists(msg) => io::Error::new(io::ErrorKind::AlreadyExists, msg),
+        VfsError::NotSupported(msg) => io::Error::new(io::ErrorKind::Unsupported, msg),
+        VfsError::InvalidPath(msg) => io::Error::new(io::ErrorKind::InvalidInput, msg),
         VfsError::Other(msg) => io::Error::new(io::ErrorKind::Other, msg),
     }
 }

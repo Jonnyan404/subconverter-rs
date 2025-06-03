@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::constants::regex_black_list::REGEX_BLACK_LIST;
-use crate::interfaces::subconverter::{subconverter, SubconverterConfigBuilder};
+use crate::interfaces::subconverter::{subconverter, SubconverterConfigBuilder, UploadStatus};
 use crate::models::ruleset::RulesetConfigs;
 use crate::models::{ProxyGroupConfigs, RegexMatchConfigs, SubconverterTarget};
 use crate::settings::external::ExternalSettings;
@@ -19,6 +19,43 @@ fn default_ver() -> u32 {
     3
 }
 
+// START Helper function for deserializing boolean-like values
+mod bool_deserializer {
+    use serde::{self, Deserialize, Deserializer};
+
+    pub fn deserialize_option_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum BoolOrString {
+            Bool(bool),
+            String(String),
+            Int(i64),
+        }
+
+        match Option::<BoolOrString>::deserialize(deserializer)? {
+            Some(BoolOrString::Bool(b)) => Ok(Some(b)),
+            Some(BoolOrString::Int(i)) => match i {
+                0 => Ok(Some(false)),
+                1 => Ok(Some(true)),
+                _ => Ok(None), /* Or return an error: Err(serde::de::Error::custom("invalid
+                                * integer for bool")) */
+            },
+            Some(BoolOrString::String(s)) => match s.to_lowercase().as_str() {
+                "true" | "yes" | "1" | "on" => Ok(Some(true)),
+                "false" | "no" | "0" | "off" => Ok(Some(false)),
+                _ => Ok(None), /* Or return an error:
+                                * Err(serde::de::Error::custom(format!("invalid string for bool:
+                                * {}", s))) */
+            },
+            None => Ok(None),
+        }
+    }
+}
+// END Helper function
+
 /// Query parameters for subscription conversion
 #[derive(Deserialize, Serialize, Debug, Default, Clone)]
 pub struct SubconverterQuery {
@@ -28,6 +65,10 @@ pub struct SubconverterQuery {
     #[serde(default = "default_ver")]
     pub ver: u32,
     /// Clash new field name
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub new_name: Option<bool>,
     /// URLs to convert (pipe separated)
     pub url: Option<String>,
@@ -49,47 +90,111 @@ pub struct SubconverterQuery {
     /// Device ID (for device-specific configurations)
     pub dev_id: Option<String>,
     /// Whether to insert nodes
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub insert: Option<bool>,
     /// Whether to prepend insert nodes
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub prepend: Option<bool>,
     /// Custom filename for download
     pub filename: Option<String>,
     /// Append proxy type to remarks
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub append_type: Option<bool>,
     /// Whether to remove old emoji and add new emoji
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub emoji: Option<bool>,
     /// Whether to add emoji
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub add_emoji: Option<bool>,
     /// Whether to remove emoji
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub remove_emoji: Option<bool>,
     /// List mode (node list only)
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub list: Option<bool>,
     /// Sort nodes
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub sort: Option<bool>,
 
     /// Sort Script
     pub sort_script: Option<String>,
 
     /// argFilterDeprecated
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub fdn: Option<bool>,
 
     /// Information for filtering, rename, emoji addition
     pub rename: Option<String>,
     /// Whether to enable TCP Fast Open
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub tfo: Option<bool>,
     /// Whether to enable UDP
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub udp: Option<bool>,
     /// Whether to skip certificate verification
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub scv: Option<bool>,
     /// Whether to enable TLS 1.3
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub tls13: Option<bool>,
     /// Enable rule generator
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub rename_node: Option<bool>,
     /// Update interval in seconds
     pub interval: Option<u32>,
     /// Update strict mode
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub strict: Option<bool>,
     /// Upload to gist
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub upload: Option<bool>,
     /// Authentication token
     pub token: Option<String>,
@@ -97,14 +202,29 @@ pub struct SubconverterQuery {
     pub filter: Option<String>,
 
     /// Clash script
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub script: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub classic: Option<bool>,
 
+    #[serde(
+        default,
+        deserialize_with = "bool_deserializer::deserialize_option_bool"
+    )]
     pub expand: Option<bool>,
 
     /// Singbox specific parameters
     #[serde(default)]
     pub singbox: HashMap<String, String>,
+
+    /// Request headers
+    pub request_headers: Option<HashMap<String, String>>,
 }
 
 /// Parse a query string into a HashMap
@@ -127,6 +247,13 @@ pub struct SubResponse {
     pub content_type: String,
     pub headers: HashMap<String, String>,
     pub status_code: u16,
+    #[serde(skip_serializing_if = "is_not_attempted")] // Don't include if upload wasn't attempted
+    pub upload_status: UploadStatus,
+}
+
+// Helper function for skip_serializing_if
+fn is_not_attempted(status: &UploadStatus) -> bool {
+    matches!(status, UploadStatus::NotAttempted)
 }
 
 impl SubResponse {
@@ -136,6 +263,7 @@ impl SubResponse {
             content_type,
             headers: HashMap::new(),
             status_code: 200,
+            upload_status: UploadStatus::NotAttempted, // Default to not attempted
         }
     }
 
@@ -145,11 +273,17 @@ impl SubResponse {
             content_type: "text/plain".to_string(),
             headers: HashMap::new(),
             status_code,
+            upload_status: UploadStatus::NotAttempted, // Default to not attempted
         }
     }
 
     pub fn with_headers(mut self, headers: HashMap<String, String>) -> Self {
         self.headers = headers;
+        self
+    }
+
+    pub fn with_upload_status(mut self, status: UploadStatus) -> Self {
+        self.upload_status = status;
         self
     }
 }
@@ -217,6 +351,10 @@ pub async fn sub_process(
         None => global.update_interval,
     });
     // Check if we should authorize the request, if we are in API mode
+    #[cfg(not(feature = "js-runtime"))]
+    let authorized = false;
+
+    #[cfg(feature = "js-runtime")]
     let authorized =
         !global.api_mode || query.token.as_deref().unwrap_or_default() == global.api_access_token;
     builder.authorized(authorized);
@@ -281,9 +419,7 @@ pub async fn sub_process(
     builder.skip_cert_verify(query.scv.or(global.skip_cert_verify));
     builder.tls13(query.tls13.or(global.tls13_flag));
     builder.sort(query.sort.unwrap_or(global.enable_sort));
-    if let Some(script) = &query.sort_script {
-        builder.sort_script(script.clone());
-    }
+    builder.sort_script(query.sort_script.unwrap_or(global.sort_script.clone()));
 
     builder.filter_deprecated(query.fdn.unwrap_or(global.filter_deprecated));
     builder.clash_new_field_name(query.new_name.unwrap_or(global.clash_use_new_field));
@@ -457,20 +593,25 @@ pub async fn sub_process(
     builder.filename(query.filename.clone());
     builder.upload(query.upload.unwrap_or_default());
 
-    // // Process filter script
-    // if let Some(filter) = &query.filter {
-    //     builder = builder.filter_script(Some(filter.clone()));
-    // }
+    // Process filter script
+    let filter = query.filter.unwrap_or(global.filter_script.clone());
+    if !filter.is_empty() {
+        builder.filter_script(Some(filter));
+    }
 
     // // Process device ID
     // if let Some(dev_id) = &query.dev_id {
-    //     builder = builder.device_id(Some(dev_id.clone()));
+    //     builder.device_id(Some(dev_id.clone()));
     // }
 
     // // Set managed config prefix from global settings
     // if !global.managed_config_prefix.is_empty() {
-    //     builder = builder.managed_config_prefix(global.managed_config_prefix.clone());
-    // }
+    //     builder =
+    // builder.managed_config_prefix(global.managed_config_prefix.clone()); }
+
+    if let Some(request_headers) = &query.request_headers {
+        builder.request_headers(request_headers.clone());
+    }
 
     // Build and validate configuration
     let config = match builder.build() {
@@ -502,7 +643,8 @@ pub async fn sub_process(
 
             debug!("Subconverter completed successfully");
             Ok(SubResponse::ok(result.content, content_type.to_string())
-                .with_headers(result.headers))
+                .with_headers(result.headers)
+                .with_upload_status(result.upload_status))
         }
         Err(e) => {
             error!("Subconverter error: {}", e);

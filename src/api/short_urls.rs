@@ -3,10 +3,10 @@ use crate::utils::system::safe_system_time;
 use crate::vfs::vercel_kv_vfs::VercelKvVfs;
 use crate::vfs::{vercel_kv_types::VirtualFileSystem, VfsError};
 use js_sys::Math;
-use log::{debug, error, info};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 use wasm_bindgen::prelude::*;
 
 const SHORT_URL_DIR: &str = "/short";

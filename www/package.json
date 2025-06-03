@@ -1,14 +1,14 @@
 {
   "name": "subconverter-next",
-  "version": "0.1.0",
+  "version": "0.2.13-beta.dev.36b38f2",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "rebuild:wasm:dev": "cd .. && ./build-wasm.sh && cd www && pnpm dev",
+    "rebuild:wasm:dev": "cd .. && ./scripts/build-wasm.sh && cd www && pnpm dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "deploy:netlify": "netlify deploy --build"
+    "deploy:netlify": "NETLIFY=true netlify deploy --build"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -24,7 +24,7 @@
     "postcss": "^8.5.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "subconverter-wasm": "0.2.13"
+    "subconverter-wasm": "0.2.34"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
@@ -36,7 +36,6 @@
     "@types/webpack": "^5.28.5",
     "eslint": "^9.24.0",
     "eslint-config-next": "15.3.0",
-    "next-rspack": "^15.3.0",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3",
     "url": "^0.11.4"

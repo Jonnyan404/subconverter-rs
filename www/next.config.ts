@@ -2,7 +2,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import type { NextConfig } from "next";
 import webpack from 'webpack';
-import withRspack from 'next-rspack';
 import createNextIntlPlugin from 'next-intl/plugin';
 
 const withNextIntl = createNextIntlPlugin();

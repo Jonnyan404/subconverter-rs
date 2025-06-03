@@ -1,0 +1,29 @@
+<svg width="150" height="150" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs></defs>
+
+            {/* Invalid comments removed */}
+
+            {/* Scaled down logo elements (approx 80%) */}
+            <polygon points="50,14 81,32 81,68 50,86 19,68 19,32"
+                     fill="none"
+                     stroke="#6A0DAD"
+                     stroke-width="5"
+                     stroke-linejoin="round" />
+
+            <path d="M 14 86 Q 22 66, 47 53"
+                  stroke="#9370DB"
+                  stroke-width="5"
+                  fill="none"
+                  stroke-linecap="round" />
+
+            <path d="M 53 47 Q 78 34, 86 14"
+                  stroke="#6A0DAD"
+                  stroke-width="5"
+                  fill="none"
+                  stroke-linecap="round" />
+
+            {/* Orange star drawn last to be on top */}
+            <path d="M 50 36 L 53 47 L 64 50 L 53 53 L 50 64 L 47 53 L 36 50 L 47 47 Z"
+                  fill="#F74C00" />
+
+        </svg>

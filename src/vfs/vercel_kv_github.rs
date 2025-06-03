@@ -9,7 +9,7 @@ pub struct GitHubTreeResponse {
 }
 
 /// GitHub API tree item structure
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct GitHubTreeItem {
     pub path: String,
     #[serde(rename = "type")]

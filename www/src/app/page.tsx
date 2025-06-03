@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState, FormEvent, useCallback, useEffect } from "react";
 import { useTranslations } from 'next-intl';
 import { convertSubscription, SubResponseData, ErrorData, createShortUrl, ShortUrlData, getAvailableDownloads, detectUserOS, AppDownloadInfo } from '@/lib/api-client';
@@ -184,7 +185,10 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-between p-4 md:p-8 lg:p-24">
       <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
         <div className="flex flex-col sm:flex-row items-center justify-between mb-6">
-          <h1 className="text-4xl font-bold mb-4 sm:mb-0 text-center">{t('title')}</h1>
+          <div className="flex items-center gap-4 mb-4 sm:mb-0">
+            <Image src="/logo.svg" alt="Subconverter Logo" width={60} height={60} />
+            <h1 className="text-4xl font-bold text-center">{t('title')}</h1>
+          </div>
           <div className="flex gap-4 items-center">
             <LanguageSwitcher />
             <a
@@ -298,6 +302,19 @@ export default function Home() {
               <h3 className="text-lg font-semibold text-red-800">{t('error')}</h3>
               <p className="text-red-700">{error.error}</p>
               {error.details && <p className="mt-1 text-sm text-red-600">{error.details}</p>}
+              <p className="mt-2 text-sm text-gray-700">
+                {t('reportIssuePrompt')}
+                {' '}
+                <a
+                  href="https://github.com/lonelam/subconverter-rs/issues/new/choose"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline"
+                >
+                  {t('createIssueLinkText')}
+                </a>
+                . {t('pasteErrorInfo')}
+              </p>
             </div>
           )}
 
@@ -318,9 +335,15 @@ export default function Home() {
                   {shortUrlData && shortUrlCreated ? shortUrlData.short_url : generateApiUrl()}
                 </p>
                 <p className="text-xs mt-1">
-                  {t('useUrlMessage')}
-                  {saveApiUrl && !shortUrlCreated && t('urlWillBeSaved')}
-                  {shortUrlCreated && t('shortUrlMessage')}
+                  <span className="text-gray-400">
+                    {t('useUrlMessage')}
+                  </span>
+                  <span className="text-gray-400">
+                    {saveApiUrl && !shortUrlCreated && t('urlWillBeSaved')}
+                  </span>
+                  <span className="text-gray-400">
+                    {shortUrlCreated && t('shortUrlMessage')}
+                  </span>
                 </p>
               </div>
 

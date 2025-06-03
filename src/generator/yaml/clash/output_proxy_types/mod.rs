@@ -1,3 +1,4 @@
+pub mod clash_output_anytls;
 pub mod clash_output_http;
 pub mod clash_output_hysteria;
 pub mod clash_output_hysteria2;

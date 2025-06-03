@@ -5,6 +5,7 @@ import { readSettingsFile, writeSettingsFile } from '@/lib/api-client';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import yaml from 'js-yaml';
+import CodeEditor from '@/components/CodeEditor';
 
 // Settings interface based on pref.yml structure
 interface SubconverterSettings {
@@ -120,10 +121,31 @@ export default function SettingsPage() {
     const [error, setError] = useState<string | null>(null);
     const [saveSuccess, setSaveSuccess] = useState(false);
     const [activeTab, setActiveTab] = useState('common');
+    const [yamlPreviewContent, setYamlPreviewContent] = useState('');
+
+    // Add state to track unsaved changes in CodeEditors
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
     useEffect(() => {
         loadSettings();
     }, []);
+
+    useEffect(() => {
+        if (!isLoading) {
+            try {
+                const currentYaml = yaml.dump(settings, {
+                    indent: 2,
+                    lineWidth: -1,
+                    noRefs: true,
+                    sortKeys: false
+                });
+                setYamlPreviewContent(currentYaml);
+            } catch (err) {
+                console.error("Error generating YAML preview:", err);
+                setYamlPreviewContent("# Error generating YAML preview");
+            }
+        }
+    }, [settings, isLoading]);
 
     const loadSettings = async () => {
         setIsLoading(true);
@@ -191,6 +213,17 @@ export default function SettingsPage() {
         }));
     };
 
+    // Callback for CodeEditor save
+    const handleCodeEditorSave = () => {
+        setHasUnsavedChanges(false); // Reset unsaved changes flag on successful save
+        // Optionally: show a success message specific to the editor
+    };
+
+    // Callback for CodeEditor change
+    const handleCodeEditorChange = () => {
+        setHasUnsavedChanges(true); // Set unsaved changes flag
+    };
+
     const renderCommonSection = () => {
         const common = settings.common || {};
         return (
@@ -213,7 +246,7 @@ export default function SettingsPage() {
                         <input
                             type="text"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={common.api_access_token || ''}
+                            value={common?.api_access_token || ''}
                             onChange={(e) => handleInputChange('common', 'api_access_token', e.target.value)}
                         />
                     </div>
@@ -224,7 +257,7 @@ export default function SettingsPage() {
                     <input
                         type="text"
                         className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                        value={(common.default_url || []).join(', ')}
+                        value={(common?.default_url || []).join(', ')}
                         onChange={(e) => handleArrayChange('common', 'default_url', e.target.value)}
                     />
                     <p className="mt-1 text-xs text-gray-400">{t('common.defaultUrlHelp')}</p>
@@ -235,7 +268,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">{t('common.enableInsert')}</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={common.enable_insert ? "true" : "false"}
+                            value={common?.enable_insert ? "true" : "false"}
                             onChange={(e) => handleInputChange('common', 'enable_insert', e.target.value === "true")}
                         >
                             <option value="true">{commonT('enabled')}</option>
@@ -247,7 +280,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">{t('common.prependInsertUrl')}</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={common.prepend_insert_url ? "true" : "false"}
+                            value={common?.prepend_insert_url ? "true" : "false"}
                             onChange={(e) => handleInputChange('common', 'prepend_insert_url', e.target.value === "true")}
                         >
                             <option value="true">{commonT('enabled')}</option>
@@ -261,7 +294,7 @@ export default function SettingsPage() {
                     <input
                         type="text"
                         className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                        value={(common.insert_url || []).join(', ')}
+                        value={(common?.insert_url || []).join(', ')}
                         onChange={(e) => handleArrayChange('common', 'insert_url', e.target.value)}
                     />
                     <p className="mt-1 text-xs text-gray-400">{t('common.insertUrlHelp')}</p>
@@ -280,7 +313,7 @@ export default function SettingsPage() {
                         <input
                             type="text"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={server.listen || ''}
+                            value={server?.listen || ''}
                             onChange={(e) => handleInputChange('server', 'listen', e.target.value)}
                         />
                     </div>
@@ -290,7 +323,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={server.port || ''}
+                            value={server?.port || ''}
                             onChange={(e) => handleInputChange('server', 'port', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -301,7 +334,7 @@ export default function SettingsPage() {
                     <input
                         type="text"
                         className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                        value={server.serve_file_root || ''}
+                        value={server?.serve_file_root || ''}
                         onChange={(e) => handleInputChange('server', 'serve_file_root', e.target.value)}
                     />
                 </div>
@@ -318,7 +351,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Log Level</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.log_level || 'info'}
+                            value={advanced?.log_level || 'info'}
                             onChange={(e) => handleInputChange('advanced', 'log_level', e.target.value)}
                         >
                             <option value="debug">Debug</option>
@@ -332,7 +365,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Print Debug Info</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.print_debug_info ? "true" : "false"}
+                            value={advanced?.print_debug_info ? "true" : "false"}
                             onChange={(e) => handleInputChange('advanced', 'print_debug_info', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -347,7 +380,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.max_pending_connections || ''}
+                            value={advanced?.max_pending_connections || ''}
                             onChange={(e) => handleInputChange('advanced', 'max_pending_connections', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -357,7 +390,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.max_concurrent_threads || ''}
+                            value={advanced?.max_concurrent_threads || ''}
                             onChange={(e) => handleInputChange('advanced', 'max_concurrent_threads', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -369,7 +402,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.max_allowed_rulesets || ''}
+                            value={advanced?.max_allowed_rulesets || ''}
                             onChange={(e) => handleInputChange('advanced', 'max_allowed_rulesets', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -379,7 +412,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.max_allowed_rules || ''}
+                            value={advanced?.max_allowed_rules || ''}
                             onChange={(e) => handleInputChange('advanced', 'max_allowed_rules', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -389,7 +422,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.max_allowed_download_size || ''}
+                            value={advanced?.max_allowed_download_size || ''}
                             onChange={(e) => handleInputChange('advanced', 'max_allowed_download_size', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -400,7 +433,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Enable Cache</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.enable_cache ? "true" : "false"}
+                            value={advanced?.enable_cache ? "true" : "false"}
                             onChange={(e) => handleInputChange('advanced', 'enable_cache', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -412,7 +445,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Skip Failed Links</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.skip_failed_links ? "true" : "false"}
+                            value={advanced?.skip_failed_links ? "true" : "false"}
                             onChange={(e) => handleInputChange('advanced', 'skip_failed_links', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -427,7 +460,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.cache_subscription || ''}
+                            value={advanced?.cache_subscription || ''}
                             onChange={(e) => handleInputChange('advanced', 'cache_subscription', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -437,7 +470,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.cache_config || ''}
+                            value={advanced?.cache_config || ''}
                             onChange={(e) => handleInputChange('advanced', 'cache_config', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -447,7 +480,7 @@ export default function SettingsPage() {
                         <input
                             type="number"
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={advanced.cache_ruleset || ''}
+                            value={advanced?.cache_ruleset || ''}
                             onChange={(e) => handleInputChange('advanced', 'cache_ruleset', parseInt(e.target.value) || 0)}
                         />
                     </div>
@@ -465,7 +498,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Enable UDP</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.udp_flag === undefined ? "" : (nodePref.udp_flag ? "true" : "false")}
+                            value={nodePref?.udp_flag === undefined ? "" : (nodePref?.udp_flag ? "true" : "false")}
                             onChange={(e) => {
                                 if (e.target.value === "") {
                                     const newSettings = { ...settings };
@@ -488,7 +521,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">TFO (TCP Fast Open)</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.tcp_fast_open_flag === undefined ? "" : (nodePref.tcp_fast_open_flag ? "true" : "false")}
+                            value={nodePref?.tcp_fast_open_flag === undefined ? "" : (nodePref?.tcp_fast_open_flag ? "true" : "false")}
                             onChange={(e) => {
                                 if (e.target.value === "") {
                                     const newSettings = { ...settings };
@@ -511,7 +544,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Skip Cert Verify</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.skip_cert_verify_flag === undefined ? "" : (nodePref.skip_cert_verify_flag ? "true" : "false")}
+                            value={nodePref?.skip_cert_verify_flag === undefined ? "" : (nodePref?.skip_cert_verify_flag ? "true" : "false")}
                             onChange={(e) => {
                                 if (e.target.value === "") {
                                     const newSettings = { ...settings };
@@ -536,7 +569,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Enable TLS 1.3</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.tls13_flag === undefined ? "" : (nodePref.tls13_flag ? "true" : "false")}
+                            value={nodePref?.tls13_flag === undefined ? "" : (nodePref?.tls13_flag ? "true" : "false")}
                             onChange={(e) => {
                                 if (e.target.value === "") {
                                     const newSettings = { ...settings };
@@ -559,7 +592,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Sort Nodes</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.sort_flag ? "true" : "false"}
+                            value={nodePref?.sort_flag ? "true" : "false"}
                             onChange={(e) => handleInputChange('node_pref', 'sort_flag', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -573,7 +606,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Filter Deprecated Nodes</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.filter_deprecated_nodes ? "true" : "false"}
+                            value={nodePref?.filter_deprecated_nodes ? "true" : "false"}
                             onChange={(e) => handleInputChange('node_pref', 'filter_deprecated_nodes', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -585,7 +618,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Append Sub User Info</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.append_sub_userinfo ? "true" : "false"}
+                            value={nodePref?.append_sub_userinfo ? "true" : "false"}
                             onChange={(e) => handleInputChange('node_pref', 'append_sub_userinfo', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -599,7 +632,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Clash Use New Field Names</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.clash_use_new_field_name ? "true" : "false"}
+                            value={nodePref?.clash_use_new_field_name ? "true" : "false"}
                             onChange={(e) => handleInputChange('node_pref', 'clash_use_new_field_name', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -611,7 +644,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">SingBox Add Clash Modes</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.singbox_add_clash_modes ? "true" : "false"}
+                            value={nodePref?.singbox_add_clash_modes ? "true" : "false"}
                             onChange={(e) => handleInputChange('node_pref', 'singbox_add_clash_modes', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -625,7 +658,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Clash Proxies Style</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.clash_proxies_style || 'flow'}
+                            value={nodePref?.clash_proxies_style || 'flow'}
                             onChange={(e) => handleInputChange('node_pref', 'clash_proxies_style', e.target.value)}
                         >
                             <option value="flow">Flow</option>
@@ -637,7 +670,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Clash Proxy Groups Style</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={nodePref.clash_proxy_groups_style || 'flow'}
+                            value={nodePref?.clash_proxy_groups_style || 'flow'}
                             onChange={(e) => handleInputChange('node_pref', 'clash_proxy_groups_style', e.target.value)}
                         >
                             <option value="flow">Flow</option>
@@ -658,7 +691,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Add Emoji</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={emojis.add_emoji ? "true" : "false"}
+                            value={emojis?.add_emoji ? "true" : "false"}
                             onChange={(e) => handleInputChange('emojis', 'add_emoji', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -670,7 +703,7 @@ export default function SettingsPage() {
                         <label className="block text-sm font-medium mb-1">Remove Old Emoji</label>
                         <select
                             className="w-full p-2 border border-gray-300 rounded bg-white/10"
-                            value={emojis.remove_old_emoji ? "true" : "false"}
+                            value={emojis?.remove_old_emoji ? "true" : "false"}
                             onChange={(e) => handleInputChange('emojis', 'remove_old_emoji', e.target.value === "true")}
                         >
                             <option value="true">Enabled</option>
@@ -689,6 +722,37 @@ export default function SettingsPage() {
         );
     };
 
+    const renderSnippetsSection = () => { // New function for snippets tab
+        return (
+            <div className="space-y-6">
+                <div>
+                    <h3 className="text-lg font-semibold mb-2">emoji.txt</h3>
+                    <p className="text-sm text-gray-400 mb-2">{t('snippets.emojiFileDesc')}</p>
+                    <div className="bg-gray-800 rounded-lg shadow-md overflow-hidden h-96">
+                        <CodeEditor
+                            filePath="snippets/emoji.txt"
+                            language="plaintext"
+                            onSave={handleCodeEditorSave}
+                            onChange={handleCodeEditorChange}
+                        />
+                    </div>
+                </div>
+                <div>
+                    <h3 className="text-lg font-semibold mb-2">gistconf.ini</h3>
+                    <p className="text-sm text-gray-400 mb-2">{t('snippets.gistConfDesc')}</p>
+                    <div className="bg-gray-800 rounded-lg shadow-md overflow-hidden h-96">
+                        <CodeEditor
+                            filePath="gistconf.ini"
+                            language="ini"
+                            onSave={handleCodeEditorSave}
+                            onChange={handleCodeEditorChange}
+                        />
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderTab = () => {
         switch (activeTab) {
             case 'common':
@@ -701,6 +765,8 @@ export default function SettingsPage() {
                 return renderNodePrefSection();
             case 'emojis':
                 return renderEmojisSection();
+            case 'snippets': // Add case for snippets
+                return renderSnippetsSection();
             default:
                 return <p>Select a section to edit settings.</p>;
         }
@@ -741,6 +807,7 @@ export default function SettingsPage() {
 
                 <div className="bg-white/5 rounded-lg shadow-md overflow-hidden">
                     <div className="flex flex-wrap border-b border-gray-300">
+                        {/* Pref.yml related tabs */}
                         <button
                             className={`px-4 py-2 ${activeTab === 'common' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
                             onClick={() => setActiveTab('common')}
@@ -771,23 +838,55 @@ export default function SettingsPage() {
                         >
                             {t('tabs.emojis')}
                         </button>
+
+                        {/* Separator (Optional visual cue) */}
+                        <div className="border-l border-gray-400 mx-2"></div>
+
+                        {/* Direct file editing tabs */}
+                        <button // Add Snippets tab button
+                            className={`px-4 py-2 ${activeTab === 'snippets' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
+                            onClick={() => setActiveTab('snippets')}
+                        >
+                            {t('snippets.title')}
+                        </button>
                     </div>
 
                     <div className="p-6">
                         {renderTab()}
 
-                        <div className="mt-6 flex justify-end">
-                            <button
-                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
-                                onClick={saveSettings}
-                                disabled={isSaving}
-                            >
-                                {isSaving ? t('savingSettings') : t('saveButton')}
-                            </button>
-                        </div>
+                        {/* Only show Save button for settings tabs, not snippets */}
+                        {activeTab !== 'snippets' && (
+                            <div className="mt-6 flex justify-end">
+                                <button
+                                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+                                    onClick={saveSettings}
+                                    disabled={isSaving}
+                                >
+                                    {isSaving ? t('savingSettings') : t('saveButton')}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
+
+                {/* Conditionally render YAML Preview */}
+                {activeTab !== 'snippets' && (
+                    <div className="mt-8">
+                        <h2 className="text-2xl font-semibold mb-4">YAML Preview (Read-only)</h2>
+                        <div className="bg-gray-800 rounded-lg shadow-md overflow-hidden h-96"> {/* Set fixed height */}
+                            <CodeEditor
+                                filePath="pref.yaml (Preview)"
+                                language="yaml"
+                                value={yamlPreviewContent}
+                                options={{ readOnly: true }}
+                            />
+                        </div>
+                        <p className="mt-2 text-xs text-gray-400">
+                            This is a preview of the <code className="text-xs bg-gray-700 px-1 rounded">pref.yml</code> file based on your current settings. Changes here won't be saved directly; use the form above.
+                        </p>
+                    </div>
+                )}
             </div>
         </main>
     );
-} 
+}

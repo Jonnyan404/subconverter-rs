@@ -46,7 +46,7 @@ export default function LanguageSwitcher() {
                     className={`px-3 py-1 rounded text-sm transition-colors ${currentLocale === locale
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        }`}
+                        } text-nowrap`}
                     aria-current={currentLocale === locale ? 'true' : 'false'}
                     title={`Switch to ${LANGUAGE_NAMES[locale]}`}
                 >

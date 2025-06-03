@@ -150,24 +150,18 @@ impl FromIni<Vec<RulesetConfig>> for RulesetConfigs {
     }
 }
 
-/// Implementation for parsing RegexMatchConfig from INI string lines with delimiter
+/// Implementation for parsing RegexMatchConfig from INI string lines with
+/// delimiter
 impl FromIniWithDelimiter<RegexMatchConfigs> for RegexMatchConfigs {
     fn from_ini_with_delimiter(arr: &[String], delimiter: &str) -> RegexMatchConfigs {
         let mut confs = Vec::new();
 
         for x in arr {
-            let mut conf = RegexMatchConfig {
-                _match: String::new(),
-                replace: String::new(),
-            };
+            let mut conf = RegexMatchConfig::new(String::new(), String::new(), String::new());
 
             // Handle script case
             if starts_with(x, "script:") {
-                // Note: script is commented out in the original RegexMatchConfig struct
-                // conf.script = x[7..].to_string();
-                // For now, use _match field to store script content
-                conf._match = x[7..].to_string();
-                conf.replace = "script".to_string();
+                conf.script = x[7..].to_string();
                 confs.push(conf);
                 continue;
             }
@@ -181,6 +175,8 @@ impl FromIniWithDelimiter<RegexMatchConfigs> for RegexMatchConfigs {
                     conf.replace = x[p + delimiter.len()..].to_string();
                 }
             }
+
+            conf.compile();
 
             confs.push(conf);
         }

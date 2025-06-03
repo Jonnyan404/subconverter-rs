@@ -7,7 +7,13 @@ extern "C" {
     pub async fn kv_get(key: &str) -> Result<JsValue, JsValue>;
 
     #[wasm_bindgen(catch)]
+    pub async fn kv_get_text(key: &str) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(catch)]
     pub async fn kv_set(key: &str, value: &[u8]) -> Result<(), JsValue>;
+
+    #[wasm_bindgen(catch)]
+    pub async fn kv_set_text(key: &str, value: &str) -> Result<(), JsValue>;
 
     #[wasm_bindgen(catch)]
     pub async fn kv_exists(key: &str) -> Result<JsValue, JsValue>;

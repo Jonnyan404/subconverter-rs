@@ -20,6 +20,8 @@ impl From<YamlSettings> for Settings {
         settings.default_ext_config = yaml_settings.common.default_external_config;
         settings.exclude_remarks = yaml_settings.common.exclude_remarks;
         settings.include_remarks = yaml_settings.common.include_remarks;
+        settings.enable_filter = yaml_settings.common.enable_filter;
+        settings.filter_script = yaml_settings.common.filter_script;
         settings.api_mode = yaml_settings.common.api_mode;
         settings.api_access_token = yaml_settings.common.api_access_token;
         settings.base_path = yaml_settings.common.base_path;
@@ -156,6 +158,9 @@ impl From<TomlSettings> for Settings {
         settings.append_type = common.append_proxy_type;
         settings.reload_conf_on_request = common.reload_conf_on_request;
 
+        settings.enable_filter = common.enable_filter;
+        settings.filter_script = common.filter_script;
+
         // Process default_url and insert_url
         if !common.default_urls.is_empty() {
             settings.default_urls = common.default_urls;
@@ -287,6 +292,7 @@ impl From<IniSettings> for Settings {
         settings.exclude_remarks = ini_settings.exclude_remarks;
         settings.include_remarks = ini_settings.include_remarks;
         settings.filter_script = ini_settings.filter_script.clone();
+        settings.enable_filter = ini_settings.enable_filter;
         settings.base_path = ini_settings.base_path.clone();
         settings.clash_base = ini_settings.clash_base.clone();
         settings.surge_base = ini_settings.surge_base.clone();

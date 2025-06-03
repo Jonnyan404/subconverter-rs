@@ -54,6 +54,9 @@ pub fn parse_clash_yaml(content: &str) -> Result<Vec<Proxy>, String> {
             ClashProxyYamlInput::VLess(vless) => {
                 proxies.push(vless.into());
             }
+            ClashProxyYamlInput::AnyTls(anytls) => {
+                proxies.push(anytls.into());
+            }
             ClashProxyYamlInput::Unknown => {
                 // Skip unknown proxy types
             }

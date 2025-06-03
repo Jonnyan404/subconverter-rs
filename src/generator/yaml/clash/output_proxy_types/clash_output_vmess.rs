@@ -12,8 +12,9 @@ pub struct VmessProxy {
     pub common: CommonProxyOptions,
     #[serde(skip_serializing_if = "is_empty_option_string")]
     pub uuid: Option<String>,
-    #[serde(skip_serializing_if = "is_u32_option_zero")]
-    pub alter_id: Option<u32>,
+    /// This is required by Clash, and the name is `alterId`
+    #[serde(rename = "alterId")]
+    pub alter_id: u32,
     #[serde(skip_serializing_if = "is_empty_option_string")]
     pub cipher: Option<String>,
     #[serde(skip_serializing_if = "is_empty_option_string")]
@@ -68,7 +69,7 @@ impl VmessProxy {
         Self {
             common,
             uuid: None,
-            alter_id: None,
+            alter_id: 0,
             cipher: None,
             network: None,
             ws_opts: None,
@@ -92,7 +93,7 @@ impl From<Proxy> for VmessProxy {
         let mut vmess = VmessProxy::new(common);
 
         vmess.uuid = proxy.user_id.clone();
-        vmess.alter_id = Some(proxy.alter_id as u32);
+        vmess.alter_id = proxy.alter_id as u32;
         vmess.cipher = proxy.encrypt_method.clone();
         vmess.network = proxy.transfer_protocol.clone();
 

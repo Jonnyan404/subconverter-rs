@@ -1,5 +1,8 @@
 //! String utility functions for text processing
 
+use lazy_static::lazy_static;
+use regex::Regex;
+
 /// FNV-1a hash constants
 pub const HASH_PRIME: u64 = 0x100000001B3;
 pub const HASH_BASIS: u64 = 0xCBF29CE484222325;
@@ -223,7 +226,17 @@ pub fn join<T: AsRef<str>>(parts: &[T], separator: &str) -> String {
         .join(separator)
 }
 
-/// Remove emoji characters from the beginning of a string
+lazy_static! {
+    // This regex targets characters with the Unicode Emoji property.
+    // Combining Presentation and Extended_Pictographic covers standard emojis, components, and sequences.
+    static ref EMOJI_REGEX: Regex = Regex::new(r"\p{Emoji_Presentation}|\p{Extended_Pictographic}").unwrap();
+}
+
+/// Removes emoji characters from a string using a regular expression.
+///
+/// This implementation uses the `regex` crate with Unicode property support.
+/// It targets characters with the `Emoji_Presentation` or `Extended_Pictographic`
+/// properties, which cover most standard emojis.
 ///
 /// # Arguments
 ///
@@ -231,36 +244,10 @@ pub fn join<T: AsRef<str>>(parts: &[T], separator: &str) -> String {
 ///
 /// # Returns
 ///
-/// A new string with emoji removed from the beginning
+/// A new string with emoji characters removed.
 pub fn remove_emoji(s: &str) -> String {
-    if s.is_empty() {
-        return s.to_string();
-    }
-
-    // Emoji often start with specific byte patterns in UTF-8
-    // This is a simplified version that tries to detect emoji at the start
-    let mut result = s.to_string();
-
-    // Keep removing emoji patterns from the beginning
-    // This is a simplified approach, assuming emoji are 4 bytes
-    // Real emoji detection would need a proper Unicode library
-    while result.len() >= 4 {
-        let bytes = result.as_bytes();
-        // Check for emoji pattern: typically starts with 0xF0 (240) in UTF-8
-        if bytes[0] == 0xF0 || (bytes[0] == 0xE2 && bytes[1] >= 0x9C) {
-            // Remove 4 bytes that likely form an emoji
-            result = result[4..].to_string();
-        } else {
-            break;
-        }
-    }
-
-    // If we removed everything, return the original string
-    if result.is_empty() {
-        return s.to_string();
-    }
-
-    result
+    // Replace all matches with an empty string.
+    EMOJI_REGEX.replace_all(s, "").into_owned()
 }
 
 /// Calculate MD5 hash for a string

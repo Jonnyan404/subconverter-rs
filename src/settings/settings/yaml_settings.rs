@@ -294,6 +294,7 @@ pub struct YamlSettings {
     #[serde(deserialize_with = "deserialize_template_as_template_settings")]
     pub template: TemplateSettings,
     pub aliases: Vec<AliasConfig>,
+    #[serde(skip)]
     pub tasks: Vec<TaskConfigInYaml>,
     pub server: ServerSettings,
     pub advanced: AdvancedSettings,

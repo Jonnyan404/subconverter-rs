@@ -3,6 +3,8 @@ use crate::{generator::yaml::clash::output_proxy_types::*, Proxy, ProxyType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use super::output_proxy_types::clash_output_anytls::ClashOutputAnyTLS;
+
 /// Represents a complete Clash configuration output
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -146,6 +148,8 @@ pub enum ClashProxyOutput {
     Hysteria2(Hysteria2Proxy),
     #[serde(rename = "vless")]
     VLess(VLessProxy),
+    #[serde(rename = "anytls")]
+    AnyTls(ClashOutputAnyTLS),
 }
 
 /// Factory methods for creating various proxy types
@@ -204,6 +208,10 @@ impl ClashProxyOutput {
     pub fn new_vless(common: CommonProxyOptions) -> Self {
         ClashProxyOutput::VLess(VLessProxy::new(common))
     }
+
+    pub fn new_anytls(common: CommonProxyOptions) -> Self {
+        ClashProxyOutput::AnyTls(ClashOutputAnyTLS::new(common))
+    }
 }
 
 /// Trait for common operations on all ClashProxy variants
@@ -259,6 +267,7 @@ impl ClashProxyCommon for ClashProxyOutput {
             ClashProxyOutput::Hysteria(proxy) => &proxy.common,
             ClashProxyOutput::Hysteria2(proxy) => &proxy.common,
             ClashProxyOutput::VLess(proxy) => &proxy.common,
+            ClashProxyOutput::AnyTls(proxy) => &proxy.common,
         }
     }
 
@@ -275,6 +284,7 @@ impl ClashProxyCommon for ClashProxyOutput {
             ClashProxyOutput::Hysteria(proxy) => &mut proxy.common,
             ClashProxyOutput::Hysteria2(proxy) => &mut proxy.common,
             ClashProxyOutput::VLess(proxy) => &mut proxy.common,
+            ClashProxyOutput::AnyTls(proxy) => &mut proxy.common,
         }
     }
 }
@@ -412,6 +422,7 @@ impl From<Proxy> for ClashProxyOutput {
             ProxyType::WireGuard => ClashProxyOutput::WireGuard(WireGuardProxy::from(proxy)),
             ProxyType::Hysteria => ClashProxyOutput::Hysteria(HysteriaProxy::from(proxy)),
             ProxyType::Hysteria2 => ClashProxyOutput::Hysteria2(Hysteria2Proxy::from(proxy)),
+            ProxyType::AnyTls => ClashProxyOutput::AnyTls(ClashOutputAnyTLS::from(proxy)),
             _ => {
                 // 遇到不支持的类型，返回一个默认的HTTP代理
                 // 实际使用时应该在转换前检查并筛选掉不支持的类型

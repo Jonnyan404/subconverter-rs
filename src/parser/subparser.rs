@@ -162,7 +162,7 @@ pub async fn add_nodes(
                     all_nodes.append(&mut nodes);
                     Ok(())
                 } else {
-                    Err(format!("Invalid subscription: '{}'", link))
+                    Err(format!("Invalid subscription: '{}'", sub_content))
                 }
             } else {
                 Err("Cannot download subscription data".to_string())

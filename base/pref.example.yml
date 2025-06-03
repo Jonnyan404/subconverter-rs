@@ -131,7 +131,7 @@ aliases:
   - {uri: /v2ray, target: "/sub?target=v2ray"}
   - {uri: /trojan, target: "/sub?target=trojan"}
 
-tasks:
+# tasks:
 #  - name: tick
 #    cronexp: "0/10 * * * * ?"
 #    path: tick.js
@@ -156,4 +156,4 @@ advanced:
   cache_ruleset: 21600
   script_clean_context: true
   async_fetch_ruleset: false
-  skip_failed_links: false
+  skip_failed_links: true

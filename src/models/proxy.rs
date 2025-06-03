@@ -4,11 +4,14 @@
 
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+
 use super::proxy_node::combined::CombinedProxy;
 
 /// Represents the type of a proxy.
-/// This is the canonical enum used for proxy type identification across the application.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// This is the canonical enum used for proxy type identification across the
+/// application.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProxyType {
     Unknown,
     Shadowsocks,
@@ -24,6 +27,7 @@ pub enum ProxyType {
     Hysteria2,
     // new proxy types could be added as enum combined proxy types
     Vless,
+    AnyTls,
 }
 
 /// Converts a `ProxyType` into a human-readable name.
@@ -42,15 +46,18 @@ impl ProxyType {
             ProxyType::Hysteria => "Hysteria",
             ProxyType::Hysteria2 => "Hysteria2",
             ProxyType::Vless => "Vless",
+            ProxyType::AnyTls => "AnyTLS",
             ProxyType::Unknown => "Unknown",
         }
     }
 }
 
-/// Represents a proxy configuration.
-#[derive(Debug, Clone)]
+/// Represents a proxy configuration. Serialized for JavaScripts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct Proxy {
     pub proxy_type: ProxyType,
+    #[serde(flatten)]
     pub combined_proxy: Option<CombinedProxy>,
     pub id: u32,
     pub group_id: i32,
@@ -191,10 +198,29 @@ impl Default for Proxy {
         }
     }
 }
+#[cfg(feature = "js-runtime")]
+use rquickjs::{Ctx, IntoJs};
+#[cfg(feature = "js-runtime")]
+impl<'js> IntoJs<'js> for Proxy {
+    fn into_js(self, ctx: &Ctx<'js>) -> Result<rquickjs::Value<'js>, rquickjs::Error> {
+        let value =
+            ctx.json_parse(
+                serde_json::to_string(&self).map_err(|e| rquickjs::Error::IntoJs {
+                    from: "Proxy",
+                    to: "Json",
+                    message: Some(e.to_string()),
+                })?,
+            )?;
+        Ok(value)
+    }
+}
 
 impl Proxy {
     pub fn is_combined_proxy(&self) -> bool {
-        matches!(self.proxy_type, ProxyType::Vless | ProxyType::Shadowsocks)
+        matches!(
+            self.proxy_type,
+            ProxyType::Vless | ProxyType::Shadowsocks | ProxyType::AnyTls
+        )
     }
 
     /// 设置 UDP 支持，如果值已存在则不覆盖

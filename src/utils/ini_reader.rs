@@ -8,6 +8,8 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 
+use super::{file_exists, file_get_async};
+
 /// Error types for the INI reader
 #[derive(Debug)]
 pub enum IniReaderError {
@@ -50,7 +52,8 @@ pub struct IniReader {
     current_section: String,
     /// List of sections to exclude when parsing
     exclude_sections: HashSet<String>,
-    /// List of sections to include when parsing (if empty, all sections are included)
+    /// List of sections to include when parsing (if empty, all sections are
+    /// included)
     include_sections: HashSet<String>,
     /// List of sections to save directly without processing
     direct_save_sections: HashSet<String>,
@@ -58,7 +61,8 @@ pub struct IniReader {
     section_order: Vec<String>,
     /// Last error that occurred
     last_error: IniReaderError,
-    /// Save any line within a section even if it doesn't follow the key=value format
+    /// Save any line within a section even if it doesn't follow the key=value
+    /// format
     pub store_any_line: bool,
     /// Allow section titles to appear multiple times
     pub allow_dup_section_titles: bool,
@@ -116,7 +120,8 @@ impl IniReader {
         self.isolated_items_section = section.to_string();
     }
 
-    /// Erase all contents of the current section (keeps the section, just empties it)
+    /// Erase all contents of the current section (keeps the section, just
+    /// empties it)
     pub fn erase_section(&mut self) {
         if self.current_section.is_empty() {
             return;
@@ -156,9 +161,9 @@ impl IniReader {
     }
 
     /// Create a new INI reader and parse a file
-    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, IniReaderError> {
+    pub async fn from_file(path: &str) -> Result<Self, IniReaderError> {
         let mut reader = IniReader::new();
-        reader.parse_file(path)?;
+        reader.parse_file(path).await?;
         Ok(reader)
     }
 
@@ -358,17 +363,15 @@ impl IniReader {
     }
 
     /// Parse an INI file
-    pub fn parse_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), IniReaderError> {
+    pub async fn parse_file(&mut self, path: &str) -> Result<(), IniReaderError> {
         // Check if file exists
-        if !path.as_ref().exists() {
+        if !file_exists(path).await {
             self.last_error = IniReaderError::NotExist;
             return Err(IniReaderError::NotExist);
         }
 
         // Read the file
-        let mut file = File::open(path)?;
-        let mut content = String::new();
-        file.read_to_string(&mut content)?;
+        let content = file_get_async(path, None).await?;
 
         // Parse the content
         self.parse(&content)

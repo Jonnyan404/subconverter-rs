@@ -1,6 +1,6 @@
 use crate::{
     models::{Proxy, SOCKS_DEFAULT_GROUP, SS_DEFAULT_GROUP, V2RAY_DEFAULT_GROUP},
-    utils::url_decode,
+    utils::{base64::url_safe_base64_decode, url_decode},
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
 use regex::Regex;
@@ -19,13 +19,7 @@ pub fn explode_vmess(vmess: &str, node: &mut Proxy) -> bool {
     let encoded = &vmess[8..];
 
     // Decode base64
-    let decoded = match STANDARD.decode(encoded) {
-        Ok(decoded) => match String::from_utf8(decoded) {
-            Ok(s) => s,
-            Err(_) => return false,
-        },
-        Err(_) => return false,
-    };
+    let decoded = url_safe_base64_decode(encoded);
 
     // Try to parse as JSON
     let json: Value = match serde_json::from_str(&decoded) {
@@ -108,7 +102,8 @@ pub fn explode_vmess(vmess: &str, node: &mut Proxy) -> bool {
 }
 
 /// Parse a standard VMess link into a Proxy object
-/// Format: vmess[+tls]://uuid-alterId@hostname:port[/?network=ws&host=xxx&path=yyy]
+/// Format: vmess[+tls]://uuid-alterId@hostname:port[/?network=ws&host=xxx&
+/// path=yyy]
 pub fn explode_std_vmess(vmess: &str, node: &mut Proxy) -> bool {
     // Check if the link starts with vmess:// or vmess+tls://
     if !vmess.starts_with("vmess://") && !vmess.starts_with("vmess+") {
@@ -141,7 +136,10 @@ pub fn explode_std_vmess(vmess: &str, node: &mut Proxy) -> bool {
 
     let caps = match re.captures(&url_without_fragment) {
         Some(c) => c,
-        None => return false,
+        None => {
+            log::warn!("Failed to explode vmess link by regex: {}", vmess);
+            return false;
+        }
     };
 
     let id = caps.get(1).map_or("", |m| m.as_str()).to_string();
@@ -717,4 +715,163 @@ pub fn explode_vmess_conf(content: &str, nodes: &mut Vec<Proxy>) -> bool {
     }
 
     false
+}
+
+/// Parse a standard VMess link using Url::parse
+/// Format examples:
+/// vmess://uuid@host:port?type=ws&path=/&host=custom.host.com&tls=true&
+/// sni=custom.sni.com#remark vmess://uuid-aid@host:port?network=tcp&
+/// encryption=aes-128-gcm#remark vmess+tls://uuid@host:port#remark
+/// Expected example:
+/// vmess://ac104f2c-b405-3116-b81a-8c0db65a1b34@ovhzhongzhuan.ewddns.net:38555?
+/// encryption=auto&path=%2F8858d045-66fe-441a-8d35-1507216fbb2f.live238.m3u8&
+/// type=ws#%F0%9F%87%B8%F0%9F%87%AC%20OVH%207
+pub fn explode_std_vmess_new(vmess_str: &str, node: &mut Proxy) -> bool {
+    let url = match Url::parse(vmess_str) {
+        Ok(u) => u,
+        Err(_) => {
+            log::debug!("Failed to parse VMess URL: {}", vmess_str);
+            return false;
+        }
+    };
+
+    // Check scheme
+    let mut initial_tls_str = String::new();
+    match url.scheme() {
+        "vmess" => { /* initial_tls_str remains empty */ }
+        "vmess+tls" => initial_tls_str = "tls".to_string(),
+        s => {
+            log::debug!("Invalid VMess scheme: {}", s);
+            return false;
+        }
+    }
+
+    let server_address = match url.host_str() {
+        Some(h) if !h.is_empty() => h.to_string(),
+        _ => {
+            log::debug!("VMess URL missing or empty host");
+            return false;
+        }
+    };
+
+    let server_port = match url.port() {
+        Some(p) => p,
+        None => {
+            log::debug!("VMess URL missing port");
+            return false;
+        }
+    };
+
+    let user_info_str = url.username();
+    if user_info_str.is_empty() {
+        log::debug!("VMess URL missing user info (uuid)");
+        return false;
+    }
+
+    let id: String;
+    let mut aid: u16 = 0;
+
+    // Try to parse uuid-aid from user_info_str
+    if let Some(last_hyphen_pos) = user_info_str.rfind('-') {
+        // Ensure hyphen is not at the start or end, and there are characters before and
+        // after
+        if last_hyphen_pos > 0 && last_hyphen_pos < user_info_str.len() - 1 {
+            let potential_id_part = &user_info_str[..last_hyphen_pos];
+            let potential_aid_str = &user_info_str[last_hyphen_pos + 1..];
+            if let Ok(parsed_aid) = potential_aid_str.parse::<u16>() {
+                id = potential_id_part.to_string();
+                aid = parsed_aid;
+            } else {
+                // Non-numeric after last hyphen, or parse failed; treat full string as id
+                id = user_info_str.to_string();
+            }
+        } else {
+            // Hyphen is at start/end or string is just "-" or "-something" or "something-"
+            id = user_info_str.to_string();
+        }
+    } else {
+        // No hyphen found, treat full string as id
+        id = user_info_str.to_string();
+    }
+
+    // ID (UUID) must not be empty
+    if id.is_empty() {
+        log::debug!("Parsed empty ID from VMess URL user info");
+        return false;
+    }
+
+    // Default values for parameters
+    let mut net = "tcp".to_string();
+    let mut path_query = "/".to_string();
+    let mut host_header = server_address.clone(); // Default Host header to server address
+    let mut tls_str = initial_tls_str; // Determined by scheme (vmess / vmess+tls)
+    let mut sni = String::new();
+    let mut security_param = "auto".to_string(); // Default encryption/security
+
+    for (key_cow, value_cow) in url.query_pairs() {
+        let key = key_cow.as_ref();
+        // value_cow is Cow<str> and already percent-decoded by query_pairs()
+        let value = value_cow.into_owned();
+
+        match key {
+            "type" | "network" => net = value,
+            "host" => host_header = value, // HTTP Host header
+            "path" => {
+                if value.is_empty() || value == "/" {
+                    path_query = "/".to_string();
+                } else if value.starts_with('/') {
+                    path_query = value;
+                } else {
+                    path_query = format!("/{}", value); // Ensure path starts
+                                                        // with a slash
+                }
+            }
+            "tls" => {
+                // Handles "true", "false", "1", "0", or a specific string like "tls"
+                if value.eq_ignore_ascii_case("true") || value == "1" {
+                    tls_str = "tls".to_string();
+                } else if value.eq_ignore_ascii_case("false") || value == "0" {
+                    tls_str = String::new();
+                } else {
+                    tls_str = value; // Allows direct assignment, e.g., tls=xtls
+                }
+            }
+            "sni" => sni = value,
+            "encryption" | "security" => security_param = value, // For cipher
+            _ => { /* Unknown query parameter, ignore */ }
+        }
+    }
+
+    let remark_from_fragment = url.fragment().map_or_else(String::new, |f| url_decode(f));
+
+    let formatted_remark = if remark_from_fragment.is_empty() {
+        format!("{} ({})", server_address, server_port)
+    } else {
+        remark_from_fragment
+    };
+
+    *node = Proxy::vmess_construct(
+        "VMess",           // name (using a generic name for standard parsing)
+        &formatted_remark, // remark
+        &server_address,   // server address
+        server_port,       // port
+        "",                /* type_field (e.g. headerType for TCP obfuscation, usually "" for
+                            * query-based) */
+        &id,             // uuid
+        aid,             // alter_id
+        &net,            // network type (e.g., "tcp", "ws", "h2")
+        &security_param, // security/cipher (e.g., "auto", "aes-128-gcm")
+        &path_query,     // path (for ws, h2)
+        &host_header,    // host (for HTTP Host header in ws, h2)
+        "",              // edge (e.g. for CDN specific features, usually "" here)
+        &tls_str,        // tls ("tls" or "" or custom like "xtls")
+        &sni,            // sni (Server Name Indication for TLS)
+        None,            // congestion_controller
+        None,            // domain_strategy
+        None,            // allow_insecure
+        None,            // fingerprint
+        "",              // flow
+    );
+
+    true
 }
