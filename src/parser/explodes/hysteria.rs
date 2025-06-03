@@ -2,6 +2,19 @@ use crate::{models::HYSTERIA_DEFAULT_GROUP, utils::url_decode, Proxy};
 use std::collections::HashMap;
 use url::Url;
 
+/// Parse speed string and extract numeric value
+/// Examples: "11 Mbps" -> 11, "55Mbps" -> 55, "100" -> 100
+fn parse_speed(speed_str: &str) -> Option<u32> {
+    let cleaned = speed_str
+        .to_lowercase()
+        .replace("mbps", "")
+        .replace(" ", "")
+        .trim()
+        .to_string();
+
+    cleaned.parse::<u32>().ok()
+}
+
 /// Parse a Hysteria link into a Proxy object
 pub fn explode_hysteria(hysteria: &str, node: &mut Proxy) -> bool {
     // Check if the link starts with hysteria://
@@ -34,11 +47,22 @@ pub fn explode_hysteria(hysteria: &str, node: &mut Proxy) -> bool {
     // Extract protocol
     let protocol = params.get("protocol").map(|s| s.as_str()).unwrap_or("udp");
 
-    // Extract up and down speeds
-    let up = params.get("upmbps").map(|s| s.as_str()).unwrap_or("10");
-    let down = params.get("downmbps").map(|s| s.as_str()).unwrap_or("50");
-    let up_speed = up.parse::<u32>().ok();
-    let down_speed = down.parse::<u32>().ok();
+    // Extract up and down speeds - 支持多种格式
+    let up_speed = if let Some(up_str) = params.get("up") {
+        parse_speed(up_str)
+    } else if let Some(up_str) = params.get("upmbps") {
+        up_str.parse::<u32>().ok()
+    } else {
+        None
+    };
+
+    let down_speed = if let Some(down_str) = params.get("down") {
+        parse_speed(down_str)
+    } else if let Some(down_str) = params.get("downmbps") {
+        down_str.parse::<u32>().ok()
+    } else {
+        None
+    };
 
     // Extract ALPN
     let alpn_str = params.get("alpn").map(|s| s.as_str()).unwrap_or("");
