@@ -1,9 +1,9 @@
 use super::CommonProxyOptions;
 use crate::models::Proxy;
 use crate::utils::is_empty_option_string;
+use crate::utils::url::url_decode;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::utils::url::url_decode;
 
 /// Shadowsocks proxy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -76,14 +76,68 @@ impl From<Proxy> for ShadowsocksProxy {
         if let Some(plugin_opts) = proxy.plugin_option {
             let mut opts = HashMap::new();
 
+            // 改进插件选项解析逻辑
             for opt in plugin_opts.split(';') {
-                let parts: Vec<&str> = opt.split('=').collect();
+                if opt.trim().is_empty() {
+                    continue;
+                }
+                
+                let parts: Vec<&str> = opt.splitn(2, '=').collect();
                 if parts.len() == 2 {
-                    opts.insert(parts[0].to_string(), parts[1].to_string());
+                    let key = parts[0].trim();
+                    let value = parts[1].trim();
+                    
+                    // 处理特殊的映射关系
+                    match key {
+                        "mode" => {
+                            // v2ray-plugin 的 mode 参数映射到 obfs
+                            if value == "websocket" {
+                                opts.insert("obfs".to_string(), "websocket".to_string());
+                            } else {
+                                opts.insert("obfs".to_string(), value.to_string());
+                            }
+                        },
+                        "host" => {
+                            opts.insert("host".to_string(), value.to_string());
+                        },
+                        "path" => {
+                            opts.insert("path".to_string(), value.to_string());
+                        },
+                        "tls" => {
+                            // 处理布尔值
+                            if value == "true" || value == "1" {
+                                opts.insert("tls".to_string(), "true".to_string());
+                            } else if value == "false" || value == "0" {
+                                opts.insert("tls".to_string(), "false".to_string());
+                            } else {
+                                opts.insert("tls".to_string(), value.to_string());
+                            }
+                        },
+                        "mux" => {
+                            // 处理布尔值
+                            if value == "true" || value == "1" {
+                                opts.insert("mux".to_string(), "true".to_string());
+                            } else if value == "false" || value == "0" {
+                                opts.insert("mux".to_string(), "false".to_string());
+                            } else {
+                                opts.insert("mux".to_string(), value.to_string());
+                            }
+                        },
+                        _ => {
+                            // 其他参数直接添加
+                            opts.insert(key.to_string(), value.to_string());
+                        }
+                    }
+                } else if parts.len() == 1 && !parts[0].trim().is_empty() {
+                    // 处理没有值的布尔选项
+                    let key = parts[0].trim();
+                    opts.insert(key.to_string(), "true".to_string());
                 }
             }
 
-            ss.plugin_opts = Some(opts);
+            if !opts.is_empty() {
+                ss.plugin_opts = Some(opts);
+            }
         }
 
         // Map combined_proxy fields if available
@@ -93,8 +147,6 @@ impl From<Proxy> for ShadowsocksProxy {
             {
                 ss.udp_over_tcp = ss_proxy.udp_over_tcp;
                 ss.udp_over_tcp_version = ss_proxy.udp_over_tcp_version;
-
-                // Add any other fields from the combined proxy here
             }
         }
 
