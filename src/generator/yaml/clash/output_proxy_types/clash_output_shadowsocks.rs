@@ -3,6 +3,7 @@ use crate::models::Proxy;
 use crate::utils::is_empty_option_string;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::utils::url::url_decode;
 
 /// Shadowsocks proxy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +70,7 @@ impl From<Proxy> for ShadowsocksProxy {
         let mut ss = ShadowsocksProxy::new(common);
 
         ss.cipher = proxy.encrypt_method;
-        ss.password = proxy.password.clone();
+        ss.password = proxy.password.map(|pwd| url_decode(&pwd));
         ss.plugin = proxy.plugin;
 
         if let Some(plugin_opts) = proxy.plugin_option {
