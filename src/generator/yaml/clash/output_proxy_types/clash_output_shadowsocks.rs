@@ -74,13 +74,12 @@ impl From<Proxy> for ShadowsocksProxy {
         ss.plugin = proxy.plugin.clone();
 
         if let Some(plugin_opts) = proxy.plugin_option {
-            // 添加调试输出
             println!("Debug - Original plugin_opts: '{}'", plugin_opts);
             
             let mut opts = HashMap::new();
             let plugin_name = proxy.plugin.as_deref().unwrap_or("");
 
-            // 改进插件选项解析逻辑
+            // 改进插件选项解析逻辑，添加格式适配
             for opt in plugin_opts.split(';') {
                 let opt = opt.trim();
                 if opt.is_empty() {
@@ -95,30 +94,18 @@ impl From<Proxy> for ShadowsocksProxy {
                     
                     println!("Debug - Key: '{}', Value: '{}'", key, value);
                     
-                    // 根据插件类型进行特殊处理
+                    // 根据插件类型进行格式适配和处理
                     match plugin_name {
                         "v2ray-plugin" | "gost-plugin" => {
                             match key {
-                                "mode" => {
-                                    // v2ray-plugin 和 gost-plugin 的 mode 参数保持原样
-                                    opts.insert("mode".to_string(), value.to_string());
-                                },
-                                "host" => {
-                                    opts.insert("host".to_string(), value.to_string());
+                                // 适配 obfs=websocket -> mode=websocket
+                                "obfs" if value == "websocket" => {
+                                    opts.insert("mode".to_string(), "websocket".to_string());
                                 },
                                 "path" => {
                                     opts.insert("path".to_string(), value.to_string());
                                 },
-                                "tls" => {
-                                    // 处理布尔值
-                                    match value.to_lowercase().as_str() {
-                                        "true" | "1" => opts.insert("tls".to_string(), "true".to_string()),
-                                        "false" | "0" => opts.insert("tls".to_string(), "false".to_string()),
-                                        _ => opts.insert("tls".to_string(), value.to_string()),
-                                    };
-                                },
                                 "mux" => {
-                                    // 处理布尔值
                                     match value.to_lowercase().as_str() {
                                         "true" | "1" => opts.insert("mux".to_string(), "true".to_string()),
                                         "false" | "0" => opts.insert("mux".to_string(), "false".to_string()),
@@ -161,54 +148,33 @@ impl From<Proxy> for ShadowsocksProxy {
                                 }
                             }
                         },
-                        "shadow-tls" => {
-                            match key {
-                                "host" => {
-                                    opts.insert("host".to_string(), value.to_string());
-                                },
-                                "password" => {
-                                    opts.insert("password".to_string(), value.to_string());
-                                },
-                                "version" => {
-                                    // 尝试解析为数字
-                                    if let Ok(ver) = value.parse::<u8>() {
-                                        opts.insert("version".to_string(), ver.to_string());
-                                    } else {
-                                        opts.insert("version".to_string(), value.to_string());
-                                    }
-                                },
-                                _ => {
-                                    opts.insert(key.to_string(), value.to_string());
-                                }
-                            }
-                        },
-                        "restls" => {
-                            match key {
-                                "host" => {
-                                    opts.insert("host".to_string(), value.to_string());
-                                },
-                                "password" => {
-                                    opts.insert("password".to_string(), value.to_string());
-                                },
-                                "version-hint" => {
-                                    opts.insert("version-hint".to_string(), value.to_string());
-                                },
-                                "restls-script" => {
-                                    opts.insert("restls-script".to_string(), value.to_string());
-                                },
-                                _ => {
-                                    opts.insert(key.to_string(), value.to_string());
-                                }
-                            }
-                        },
                         _ => {
-                            // 未知插件，按原样处理
-                            opts.insert(key.to_string(), value.to_string());
+                            // 对于未知插件，也进行基本的格式适配
+                            match key {
+                                "obfs" if value == "websocket" => {
+                                    opts.insert("mode".to_string(), "websocket".to_string());
+                                },
+                                _ => {
+                                    opts.insert(key.to_string(), value.to_string());
+                                }
+                            }
                         }
                     }
                 } else {
-                    // 处理没有值的布尔选项
-                    if !opt.is_empty() {
+                    // 处理没有值的布尔选项和特殊格式
+                    if opt.starts_with("obfs-host") && opt.len() > 9 {
+                        // 处理 obfs-hostwt8v1.kvote.cn -> host=wt8v1.kvote.cn
+                        let host_value = &opt[9..]; // 移除 "obfs-host" 前缀
+                        println!("Debug - Fixed obfs-host: '{}'", host_value);
+                        opts.insert("host".to_string(), host_value.to_string());
+                    } else if opt == "tls" {
+                        // 单独的 tls 表示启用
+                        opts.insert("tls".to_string(), "true".to_string());
+                    } else if opt == "mux" {
+                        // 单独的 mux 表示启用
+                        opts.insert("mux".to_string(), "true".to_string());
+                    } else if !opt.is_empty() {
+                        // 其他没有值的选项当作布尔值
                         opts.insert(opt.to_string(), "true".to_string());
                     }
                 }
