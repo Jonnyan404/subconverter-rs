@@ -3,6 +3,7 @@ use crate::models::Proxy;
 use crate::utils::is_empty_option_string;
 use crate::utils::url::url_decode;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 
 /// Shadowsocks proxy configuration
@@ -18,28 +19,11 @@ pub struct ShadowsocksProxy {
     #[serde(skip_serializing_if = "is_empty_option_string")]
     pub plugin: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub plugin_opts: Option<HashMap<String, String>>,
-    // Additional fields from the C++ implementation
+    pub plugin_opts: Option<HashMap<String, Value>>, // 改为支持不同类型的值
     #[serde(skip_serializing_if = "Option::is_none")]
     pub udp_over_tcp: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub udp_over_tcp_version: Option<u8>,
-    // Fields from the SingBox implementation
-    // pub network: Option<String>, // Similar to NetworkList in SingBox
-    // pub multiplex: Option<HashMap<String, bool>>, // OutboundMultiplexOptions
-
-    // Fields from the ClashMeta implementation
-    // pub client_fingerprint: Option<String>,
-
-    // These fields would be in common options:
-    // - udp (already implemented)
-    // - tfo (already implemented as tcp_fast_open)
-    // - skip_cert_verify (already implemented)
-    // - mptcp (not implemented yet)
-    // - interface (not implemented yet)
-    // - routing_mark (not implemented yet)
-    // - ip_version (not implemented yet)
-    // - dialer_proxy (not implemented yet)
 }
 
 impl ShadowsocksProxy {
@@ -100,51 +84,68 @@ impl From<Proxy> for ShadowsocksProxy {
                             match key {
                                 // 适配 obfs=websocket -> mode=websocket
                                 "obfs" if value == "websocket" => {
-                                    opts.insert("mode".to_string(), "websocket".to_string());
+                                    opts.insert("mode".to_string(), Value::String("websocket".to_string()));
+                                },
+                                "mode" => {
+                                    opts.insert("mode".to_string(), Value::String(value.to_string()));
+                                },
+                                "host" => {
+                                    opts.insert("host".to_string(), Value::String(value.to_string()));
                                 },
                                 "path" => {
-                                    opts.insert("path".to_string(), value.to_string());
+                                    opts.insert("path".to_string(), Value::String(value.to_string()));
+                                },
+                                "tls" => {
+                                    let bool_value = match value.to_lowercase().as_str() {
+                                        "true" | "1" => true,
+                                        "false" | "0" => false,
+                                        _ => value.parse().unwrap_or(false),
+                                    };
+                                    opts.insert("tls".to_string(), Value::Bool(bool_value));
                                 },
                                 "mux" => {
-                                    match value.to_lowercase().as_str() {
-                                        "true" | "1" => opts.insert("mux".to_string(), "true".to_string()),
-                                        "false" | "0" => opts.insert("mux".to_string(), "false".to_string()),
-                                        _ => opts.insert("mux".to_string(), value.to_string()),
+                                    let bool_value = match value.to_lowercase().as_str() {
+                                        "true" | "1" => true,
+                                        "false" | "0" => false,
+                                        _ => value.parse().unwrap_or(false),
                                     };
+                                    opts.insert("mux".to_string(), Value::Bool(bool_value));
                                 },
                                 "skip-cert-verify" => {
-                                    match value.to_lowercase().as_str() {
-                                        "true" | "1" => opts.insert("skip-cert-verify".to_string(), "true".to_string()),
-                                        "false" | "0" => opts.insert("skip-cert-verify".to_string(), "false".to_string()),
-                                        _ => opts.insert("skip-cert-verify".to_string(), value.to_string()),
+                                    let bool_value = match value.to_lowercase().as_str() {
+                                        "true" | "1" => true,
+                                        "false" | "0" => false,
+                                        _ => value.parse().unwrap_or(false),
                                     };
+                                    opts.insert("skip-cert-verify".to_string(), Value::Bool(bool_value));
                                 },
                                 "fingerprint" => {
-                                    opts.insert("fingerprint".to_string(), value.to_string());
+                                    opts.insert("fingerprint".to_string(), Value::String(value.to_string()));
                                 },
                                 "v2ray-http-upgrade" => {
-                                    match value.to_lowercase().as_str() {
-                                        "true" | "1" => opts.insert("v2ray-http-upgrade".to_string(), "true".to_string()),
-                                        "false" | "0" => opts.insert("v2ray-http-upgrade".to_string(), "false".to_string()),
-                                        _ => opts.insert("v2ray-http-upgrade".to_string(), value.to_string()),
+                                    let bool_value = match value.to_lowercase().as_str() {
+                                        "true" | "1" => true,
+                                        "false" | "0" => false,
+                                        _ => value.parse().unwrap_or(false),
                                     };
+                                    opts.insert("v2ray-http-upgrade".to_string(), Value::Bool(bool_value));
                                 },
                                 _ => {
-                                    // 其他参数直接添加
-                                    opts.insert(key.to_string(), value.to_string());
+                                    // 其他参数直接添加为字符串
+                                    opts.insert(key.to_string(), Value::String(value.to_string()));
                                 }
                             }
                         },
                         "obfs" => {
                             match key {
                                 "mode" => {
-                                    opts.insert("mode".to_string(), value.to_string());
+                                    opts.insert("mode".to_string(), Value::String(value.to_string()));
                                 },
                                 "host" => {
-                                    opts.insert("host".to_string(), value.to_string());
+                                    opts.insert("host".to_string(), Value::String(value.to_string()));
                                 },
                                 _ => {
-                                    opts.insert(key.to_string(), value.to_string());
+                                    opts.insert(key.to_string(), Value::String(value.to_string()));
                                 }
                             }
                         },
@@ -152,10 +153,18 @@ impl From<Proxy> for ShadowsocksProxy {
                             // 对于未知插件，也进行基本的格式适配
                             match key {
                                 "obfs" if value == "websocket" => {
-                                    opts.insert("mode".to_string(), "websocket".to_string());
+                                    opts.insert("mode".to_string(), Value::String("websocket".to_string()));
+                                },
+                                "tls" | "mux" | "skip-cert-verify" => {
+                                    let bool_value = match value.to_lowercase().as_str() {
+                                        "true" | "1" => true,
+                                        "false" | "0" => false,
+                                        _ => value.parse().unwrap_or(false),
+                                    };
+                                    opts.insert(key.to_string(), Value::Bool(bool_value));
                                 },
                                 _ => {
-                                    opts.insert(key.to_string(), value.to_string());
+                                    opts.insert(key.to_string(), Value::String(value.to_string()));
                                 }
                             }
                         }
@@ -166,16 +175,13 @@ impl From<Proxy> for ShadowsocksProxy {
                         // 处理 obfs-hostwt8v1.kvote.cn -> host=wt8v1.kvote.cn
                         let host_value = &opt[9..]; // 移除 "obfs-host" 前缀
                         println!("Debug - Fixed obfs-host: '{}'", host_value);
-                        opts.insert("host".to_string(), host_value.to_string());
-                    } else if opt == "tls" {
-                        // 单独的 tls 表示启用
-                        opts.insert("tls".to_string(), "true".to_string());
-                    } else if opt == "mux" {
-                        // 单独的 mux 表示启用
-                        opts.insert("mux".to_string(), "true".to_string());
+                        opts.insert("host".to_string(), Value::String(host_value.to_string()));
+                    } else if opt == "tls" || opt == "mux" {
+                        // 单独的 tls/mux 表示启用
+                        opts.insert(opt.to_string(), Value::Bool(true));
                     } else if !opt.is_empty() {
                         // 其他没有值的选项当作布尔值
-                        opts.insert(opt.to_string(), "true".to_string());
+                        opts.insert(opt.to_string(), Value::Bool(true));
                     }
                 }
             }
