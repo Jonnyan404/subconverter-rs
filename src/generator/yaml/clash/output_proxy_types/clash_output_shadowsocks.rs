@@ -69,7 +69,7 @@ impl From<Proxy> for ShadowsocksProxy {
         let mut ss = ShadowsocksProxy::new(common);
 
         ss.cipher = proxy.encrypt_method;
-        ss.password = proxy.password;
+        ss.password = proxy.password.clone();
         ss.plugin = proxy.plugin;
 
         if let Some(plugin_opts) = proxy.plugin_option {

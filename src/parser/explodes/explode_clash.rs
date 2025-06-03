@@ -230,9 +230,7 @@ fn parse_clash_ss(
         // Not implementing the full C++ transformation for now
     }
 
-    // Convert pluginopts String to &str
-    let pluginopts_str = Box::leak(pluginopts.into_boxed_str());
-
+    // 移除内存泄漏的代码，直接传递字符串
     Some(Proxy::ss_construct(
         SS_DEFAULT_GROUP,
         name,
@@ -241,7 +239,7 @@ fn parse_clash_ss(
         password,
         cipher,
         plugin,
-        pluginopts_str,
+        &pluginopts, // 直接使用 &str
         udp,
         tfo,
         skip_cert_verify,
