@@ -102,14 +102,24 @@ impl From<Proxy> for HysteriaProxy {
         hysteria.protocol = proxy.protocol;
         hysteria.obfs_protocol = proxy.obfs.clone();
 
+        // 设置 up 和 up_speed 的默认值
         if proxy.up_speed > 0 {
             hysteria.up = Some(format!("{}Mbps", proxy.up_speed));
             hysteria.up_speed = Some(proxy.up_speed);
+        } else {
+            // 默认值为 30Mbps
+            hysteria.up = Some("30Mbps".to_string());
+            hysteria.up_speed = Some(30);
         }
 
+        // 设置 down 和 down_speed 的默认值
         if proxy.down_speed > 0 {
             hysteria.down = Some(format!("{}Mbps", proxy.down_speed));
             hysteria.down_speed = Some(proxy.down_speed);
+        } else {
+            // 默认值为 200Mbps
+            hysteria.down = Some("200Mbps".to_string());
+            hysteria.down_speed = Some(200);
         }
 
         hysteria.auth = proxy.auth;
