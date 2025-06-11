@@ -137,6 +137,8 @@ pub struct VLessProxy {
     pub client_fingerprint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub smux: Option<SmuxOptions>,
+    #[serde(skip_serializing_if = "Option::is_none", rename = "brutal-opts")]
+    pub brutal_opts: Option<BrutalOptions>,  // ✅ 新增字段
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skip_cert_verify: Option<bool>,
 }
@@ -192,7 +194,6 @@ impl From<Proxy> for VLessProxy {
                 vless.tls = Some(vless_proxy.tls);
                 vless.network = vless_proxy.network.clone();
                 vless.packet_addr = vless_proxy.packet_addr;
-                // vless should force udp to true
                 vless.common.udp = Some(vless_proxy.udp);
                 vless.xudp = vless_proxy.xudp;
                 vless.packet_encoding = vless_proxy.packet_encoding.clone();
@@ -258,46 +259,74 @@ impl From<Proxy> for VLessProxy {
                 vless.servername = vless_proxy.servername.clone();
             }
         } else {
-            // 如果没有 combined_proxy，则使用默认字段
-            vless.uuid = String::new();
-            vless.network = proxy.transfer_protocol.clone();
+            // ✅ 使用 Proxy 直接字段（这是我们解析 VLESS 时使用的路径）
+            vless.uuid = proxy.user_id.unwrap_or_default();
+            vless.flow = proxy.flow;
+            vless.tls = Some(proxy.tls_secure);
+            vless.network = proxy.transfer_protocol;
+            vless.packet_encoding = proxy.packet_encoding;
+            vless.fingerprint = proxy.fingerprint;
+            vless.client_fingerprint = proxy.client_fingerprint;
+            vless.servername = proxy.server_name;
 
+            // ✅ 处理 ALPN
+            if !proxy.alpn.is_empty() {
+                vless.alpn = Some(proxy.alpn.into_iter().collect());
+            }
+
+            // ✅ 处理 Reality 配置
+            if let (Some(public_key), Some(short_id)) = (
+                &proxy.public_key,
+                &proxy.reality_short_id,
+            ) {
+                vless.reality_opts = Some(RealityOptions {
+                    public_key: public_key.clone(),
+                    short_id: short_id.clone(),
+                });
+            }
+
+            // ✅ 处理 SMUX 配置
+            if proxy.smux_enabled.is_some() 
+                || proxy.smux_protocol.is_some() 
+                || proxy.smux_padding.is_some() 
+                || proxy.smux_max_connections.is_some() 
+                || proxy.smux_min_streams.is_some() 
+                || proxy.smux_statistic.is_some() 
+                || proxy.smux_only_tcp.is_some() {
+                vless.smux = Some(SmuxOptions {
+                    enabled: proxy.smux_enabled,
+                    protocol: proxy.smux_protocol,
+                    padding: proxy.smux_padding,
+                    max_connections: proxy.smux_max_connections,
+                    min_streams: proxy.smux_min_streams,
+                    statistic: proxy.smux_statistic,
+                    only_tcp: proxy.smux_only_tcp,
+                });
+            }
+
+            // ✅ 处理网络特定配置
             if let Some(network) = &proxy.transfer_protocol {
                 match network.as_str() {
                     "ws" => {
-                        let ws_opts = WSOptions {
-                            path: None,
-                            headers: None,
+                        vless.ws_opts = Some(WSOptions {
+                            path: proxy.path.clone(),
+                            headers: proxy.ws_headers.clone(),
                             max_early_data: None,
                             early_data_header_name: None,
                             v2ray_http_upgrade: None,
                             v2ray_http_upgrade_fast_open: None,
-                        };
-
-                        if let Some(path) = &proxy.path {
-                            vless.ws_path = Some(path.clone());
-                        }
-
-                        if let Some(host) = &proxy.host {
-                            let mut headers = HashMap::new();
-                            headers.insert("Host".to_string(), host.clone());
-                            vless.ws_headers = Some(headers);
-                        }
-
-                        vless.ws_opts = Some(ws_opts);
+                        });
                     }
                     "grpc" => {
-                        let grpc_opts = GrpcOptions {
-                            grpc_service_name: None,
-                        };
-
-                        if let Some(path) = &proxy.path {
-                            vless.grpc_opts = Some(GrpcOptions {
-                                grpc_service_name: Some(path.clone()),
-                            });
-                        } else {
-                            vless.grpc_opts = Some(grpc_opts);
-                        }
+                        vless.grpc_opts = Some(GrpcOptions {
+                            grpc_service_name: proxy.grpc_service_name.clone(),
+                        });
+                    }
+                    "h2" => {
+                        vless.h2_opts = Some(HTTP2Options {
+                            host: None, // 需要从 proxy.host 解析
+                            path: proxy.path.clone(),
+                        });
                     }
                     _ => {}
                 }
