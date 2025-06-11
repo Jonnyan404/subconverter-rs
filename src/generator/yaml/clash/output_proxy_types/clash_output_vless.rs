@@ -91,6 +91,18 @@ pub struct SmuxOptions {
     pub only_tcp: Option<bool>,
 }
 
+/// Brutal options for VLESS proxy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct BrutalOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub up: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub down: Option<String>,
+}
+
 /// VLESS proxy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -301,6 +313,17 @@ impl From<Proxy> for VLessProxy {
                     min_streams: proxy.smux_min_streams,
                     statistic: proxy.smux_statistic,
                     only_tcp: proxy.smux_only_tcp,
+                });
+            }
+
+            // ✅ 处理 Brutal 配置
+            if proxy.brutal_enabled.is_some() 
+                || proxy.brutal_up.is_some() 
+                || proxy.brutal_down.is_some() {
+                vless.brutal_opts = Some(BrutalOptions {
+                    enabled: proxy.brutal_enabled,
+                    up: proxy.brutal_up,
+                    down: proxy.brutal_down,
                 });
             }
 
