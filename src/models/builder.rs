@@ -545,7 +545,7 @@ impl Proxy {
             underlying_proxy,
         );
 
-        // 设置 VLESS 特有字段
+        // ✅ 只设置直接字段，不设置 combined_proxy
         proxy.user_id = Some(uuid.to_string());
         proxy.transfer_protocol = Some(network.to_string());
         proxy.tls_secure = tls == "tls";
@@ -554,69 +554,30 @@ impl Proxy {
         } else { 
             None 
         };
-        proxy.public_key = reality_public_key.clone();
-        proxy.reality_short_id = reality_short_id.clone();
-        proxy.flow = flow.clone();
-        proxy.packet_encoding = packet_encoding.clone();
-        proxy.client_fingerprint = client_fingerprint.clone();
-        proxy.fingerprint = fingerprint.clone();
-        proxy.grpc_service_name = grpc_service_name.clone();
-        proxy.ws_headers = ws_headers.clone();
-        proxy.path = ws_path.clone().or(h2_path.clone());
-        proxy.host = h2_host.as_ref().and_then(|hosts| hosts.first().cloned());
+        proxy.public_key = reality_public_key;
+        proxy.reality_short_id = reality_short_id;
+        proxy.flow = flow;
+        proxy.packet_encoding = packet_encoding;
+        proxy.client_fingerprint = client_fingerprint;
+        proxy.fingerprint = fingerprint;
+        proxy.grpc_service_name = grpc_service_name;
+        proxy.ws_headers = ws_headers;
+        proxy.path = ws_path.or(h2_path);
+        proxy.host = h2_host.and_then(|hosts| hosts.into_iter().next());
         proxy.smux_enabled = smux_enabled;
-        proxy.smux_protocol = smux_protocol.clone();
+        proxy.smux_protocol = smux_protocol;
         proxy.smux_padding = smux_padding;
-        proxy.smux_max_connections = smux_max_connections.clone();
-        proxy.smux_min_streams = smux_min_streams.clone();
+        proxy.smux_max_connections = smux_max_connections;
+        proxy.smux_min_streams = smux_min_streams;
         proxy.smux_statistic = smux_statistic;
         proxy.smux_only_tcp = smux_only_tcp;
         proxy.brutal_enabled = brutal_enabled;
-        proxy.brutal_up = brutal_up.clone();
-        proxy.brutal_down = brutal_down.clone();
+        proxy.brutal_up = brutal_up;
+        proxy.brutal_down = brutal_down;
 
-        // 设置 ALPN
         if let Some(alpn_vec) = alpn {
             proxy.alpn = alpn_vec.into_iter().collect();
         }
-
-        // ✅ 创建 VlessProxy 并设置到 combined_proxy
-        let vless_proxy = crate::models::proxy_node::vless::VlessProxy {
-            uuid: uuid.to_string(),
-            flow,
-            tls: tls == "tls",
-            network: Some(network.to_string()),
-            reality_public_key,
-            reality_short_id,
-            packet_encoding,
-            client_fingerprint,
-            fingerprint,
-            grpc_service_name,
-            ws_path,
-            ws_headers,
-            h2_host,
-            h2_path,
-            servername: if !servername.is_empty() { 
-                Some(servername.to_string()) 
-            } else { 
-                None 
-            },
-            alpn: proxy.alpn.clone(),
-            udp: udp.unwrap_or(true),
-            smux_enabled,
-            smux_protocol,
-            smux_padding,
-            smux_max_connections,
-            smux_min_streams,
-            smux_statistic,
-            smux_only_tcp,
-            brutal_enabled,
-            brutal_up,
-            brutal_down,
-            ..Default::default()
-        };
-
-        proxy.combined_proxy = Some(crate::models::proxy_node::combined::CombinedProxy::Vless(vless_proxy));
 
         proxy
     }
