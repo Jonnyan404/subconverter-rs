@@ -287,45 +287,31 @@ impl From<Proxy> for VLessProxy {
                 vless.alpn = Some(proxy.alpn.into_iter().collect());
             }
 
-            // ✅ 修复 Reality 配置条件判断
-            if let Some(public_key) = &proxy.public_key {
-                if !public_key.is_empty() {
-                    vless.reality_opts = Some(RealityOptions {
-                        public_key: public_key.clone(),
-                        short_id: proxy.reality_short_id.clone().unwrap_or_default(),
-                    });
-                }
-            }
-
-            // ✅ 处理 SMUX 配置 - 降低条件要求
-            if proxy.smux_enabled.unwrap_or(false) 
-                || proxy.smux_protocol.is_some() 
-                || proxy.smux_padding.is_some() 
-                || proxy.smux_max_connections.is_some() 
-                || proxy.smux_min_streams.is_some() 
-                || proxy.smux_statistic.is_some() 
-                || proxy.smux_only_tcp.is_some() {
-                vless.smux = Some(SmuxOptions {
-                    enabled: proxy.smux_enabled,
-                    protocol: proxy.smux_protocol,
-                    padding: proxy.smux_padding,
-                    max_connections: proxy.smux_max_connections,
-                    min_streams: proxy.smux_min_streams,
-                    statistic: proxy.smux_statistic,
-                    only_tcp: proxy.smux_only_tcp,
+            // ✅ 强制设置 Reality 配置（如果有任何 Reality 字段）
+            if proxy.public_key.is_some() || proxy.reality_short_id.is_some() {
+                vless.reality_opts = Some(RealityOptions {
+                    public_key: proxy.public_key.clone().unwrap_or_default(),
+                    short_id: proxy.reality_short_id.clone().unwrap_or_default(),
                 });
             }
 
-            // ✅ 处理 Brutal 配置 - 降低条件要求
-            if proxy.brutal_enabled.unwrap_or(false)
-                || proxy.brutal_up.is_some() 
-                || proxy.brutal_down.is_some() {
-                vless.brutal_opts = Some(BrutalOptions {
-                    enabled: proxy.brutal_enabled,
-                    up: proxy.brutal_up,
-                    down: proxy.brutal_down,
-                });
-            }
+            // ✅ 强制设置 SMUX 配置（总是创建，让 skip_serializing_if 决定是否输出）
+            vless.smux = Some(SmuxOptions {
+                enabled: proxy.smux_enabled,
+                protocol: proxy.smux_protocol,
+                padding: proxy.smux_padding,
+                max_connections: proxy.smux_max_connections,
+                min_streams: proxy.smux_min_streams,
+                statistic: proxy.smux_statistic,
+                only_tcp: proxy.smux_only_tcp,
+            });
+
+            // ✅ 强制设置 Brutal 配置（总是创建，让 skip_serializing_if 决定是否输出）
+            vless.brutal_opts = Some(BrutalOptions {
+                enabled: proxy.brutal_enabled,
+                up: proxy.brutal_up,
+                down: proxy.brutal_down,
+            });
 
             // ✅ 处理网络特定配置
             if let Some(network) = &proxy.transfer_protocol {
