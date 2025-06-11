@@ -86,6 +86,7 @@ fn parse_clash_proxy(proxy: &Value) -> Option<Proxy> {
             parse_clash_ssr(proxy, name, server, port, udp, tfo, skip_cert_verify)
         }
         "vmess" => parse_clash_vmess(proxy, name, server, port, udp, tfo, skip_cert_verify),
+        "vless" => parse_clash_vless(proxy, name, server, port, udp, tfo, skip_cert_verify),
         "socks" | "socks5" => {
             parse_clash_socks(proxy, name, server, port, udp, tfo, skip_cert_verify)
         }
@@ -446,6 +447,218 @@ fn parse_clash_vmess(
         tfo,
         skip_cert_verify,
         None,
+        underlying_proxy,
+    ))
+}
+
+/// Parse a VLESS proxy from Clash YAML
+fn parse_clash_vless(
+    proxy: &Value,
+    name: &str,
+    server: &str,
+    port: u16,
+    udp: Option<bool>,
+    tfo: Option<bool>,
+    skip_cert_verify: Option<bool>,
+) -> Option<Proxy> {
+    // Extract VLESS-specific fields
+    let uuid = proxy.get("uuid").and_then(|v| v.as_str()).unwrap_or("");
+    if uuid.is_empty() {
+        return None;
+    }
+
+    let flow = proxy.get("flow").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let packet_encoding = proxy.get("packet-encoding").and_then(|v| v.as_str()).map(|s| s.to_string());
+    
+    // Get network settings
+    let network = proxy.get("network").and_then(|v| v.as_str()).unwrap_or("tcp");
+    
+    // Get TLS settings
+    let tls = proxy.get("tls").and_then(|v| v.as_bool()).unwrap_or(false);
+    let servername = proxy.get("servername").and_then(|v| v.as_str()).unwrap_or("");
+    let client_fingerprint = proxy.get("client-fingerprint").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let fingerprint = proxy.get("fingerprint").and_then(|v| v.as_str()).map(|s| s.to_string());
+    
+    // Get ALPN
+    let alpn = proxy.get("alpn").and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+        });
+
+    // Parse Reality options
+    let mut reality_public_key = None;
+    let mut reality_short_id = None;
+    if let Some(reality_opts) = proxy.get("reality-opts").and_then(|v| v.as_mapping()) {
+        reality_public_key = reality_opts
+            .get(&Value::String("public-key".to_string()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        reality_short_id = reality_opts
+            .get(&Value::String("short-id".to_string()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+    }
+
+    // 添加 smux 解析
+    let mut smux_enabled = None;
+    let mut smux_protocol = None;
+    let mut smux_padding = None;
+    let mut smux_max_connections = None;
+    let mut smux_min_streams = None;
+    let mut smux_statistic = None;
+    let mut smux_only_tcp = None;
+    
+    if let Some(smux) = proxy.get("smux").and_then(|v| v.as_mapping()) {
+        smux_enabled = smux
+            .get(&Value::String("enabled".to_string()))
+            .and_then(|v| v.as_bool());
+        smux_protocol = smux
+            .get(&Value::String("protocol".to_string()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        smux_padding = smux
+            .get(&Value::String("padding".to_string()))
+            .and_then(|v| v.as_bool());
+        smux_max_connections = smux
+            .get(&Value::String("max-connections".to_string()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        smux_min_streams = smux
+            .get(&Value::String("min-streams".to_string()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        smux_statistic = smux
+            .get(&Value::String("statistic".to_string()))
+            .and_then(|v| v.as_bool());
+        smux_only_tcp = smux
+            .get(&Value::String("only-tcp".to_string()))
+            .and_then(|v| v.as_bool());
+    }
+
+    // 添加 brutal-opts 解析
+    let mut brutal_enabled = None;
+    let mut brutal_up = None;
+    let mut brutal_down = None;
+    
+    if let Some(brutal_opts) = proxy.get("brutal-opts").and_then(|v| v.as_mapping()) {
+        brutal_enabled = brutal_opts
+            .get(&Value::String("enabled".to_string()))
+            .and_then(|v| v.as_bool());
+        brutal_up = brutal_opts
+            .get(&Value::String("up".to_string()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        brutal_down = brutal_opts
+            .get(&Value::String("down".to_string()))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+    }
+
+    // Parse network-specific options
+    let mut grpc_service_name = None;
+    let mut ws_path = None;
+    let mut ws_headers = None;
+    let mut h2_host = None;
+    let mut h2_path = None;
+
+    match network {
+        "grpc" => {
+            if let Some(grpc_opts) = proxy.get("grpc-opts").and_then(|v| v.as_mapping()) {
+                grpc_service_name = grpc_opts
+                    .get(&Value::String("grpc-service-name".to_string()))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+            }
+        }
+        "ws" => {
+            if let Some(ws_opts) = proxy.get("ws-opts").and_then(|v| v.as_mapping()) {
+                ws_path = ws_opts
+                    .get(&Value::String("path".to_string()))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                
+                if let Some(headers) = ws_opts
+                    .get(&Value::String("headers".to_string()))
+                    .and_then(|v| v.as_mapping()) {
+                    let mut header_map = std::collections::HashMap::new();
+                    for (k, v) in headers {
+                        if let (Some(key), Some(value)) = (k.as_str(), v.as_str()) {
+                            header_map.insert(key.to_string(), value.to_string());
+                        }
+                    }
+                    if !header_map.is_empty() {
+                        ws_headers = Some(header_map);
+                    }
+                }
+            }
+        }
+        "h2" => {
+            if let Some(h2_opts) = proxy.get("h2-opts").and_then(|v| v.as_mapping()) {
+                h2_path = h2_opts
+                    .get(&Value::String("path".to_string()))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                
+                h2_host = h2_opts
+                    .get(&Value::String("host".to_string()))
+                    .and_then(|v| v.as_sequence())
+                    .map(|seq| {
+                        seq.iter()
+                            .filter_map(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .collect()
+                    });
+            }
+        }
+        _ => {}
+    }
+
+    // Extract underlying proxy
+    let underlying_proxy = proxy
+        .get("underlying-proxy")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // 需要扩展 vless_construct 来接受这些新参数
+    Some(Proxy::vless_construct(
+        V2RAY_DEFAULT_GROUP,
+        name,
+        server,
+        port,
+        uuid,
+        flow,
+        network,
+        if tls { "tls" } else { "" },
+        servername,
+        reality_public_key,
+        reality_short_id,
+        packet_encoding,
+        client_fingerprint,
+        fingerprint,
+        alpn,
+        grpc_service_name,
+        ws_path,
+        ws_headers,
+        h2_host,
+        h2_path,
+        // 新增的 smux 参数
+        smux_enabled,
+        smux_protocol,
+        smux_padding,
+        smux_max_connections,
+        smux_min_streams,
+        smux_statistic,
+        smux_only_tcp,
+        // 新增的 brutal 参数
+        brutal_enabled,
+        brutal_up,
+        brutal_down,
+        udp,
+        tfo,
+        skip_cert_verify,
         underlying_proxy,
     ))
 }

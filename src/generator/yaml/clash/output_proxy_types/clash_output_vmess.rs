@@ -17,8 +17,40 @@ pub struct VmessProxy {
     pub alter_id: u32,
     #[serde(skip_serializing_if = "is_empty_option_string")]
     pub cipher: Option<String>,
+
+    // 添加缺失的字段
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub packet_encoding: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub global_padding: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authenticated_length: Option<bool>,
+
+    // TLS 相关字段
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tls: Option<bool>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub servername: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alpn: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub fingerprint: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub client_fingerprint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_cert_verify: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reality_opts: Option<VmessRealityOptions>,
+
+    // 网络配置
     #[serde(skip_serializing_if = "is_empty_option_string")]
     pub network: Option<String>,
+
+    // SMux 配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub smux: Option<VmessSmuxOptions>,
+
+    // 网络特定选项
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ws_opts: Option<VmessWsOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -29,6 +61,23 @@ pub struct VmessProxy {
     pub grpc_opts: Option<VmessGrpcOptions>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct VmessRealityOptions {
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub public_key: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub short_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct VmessSmuxOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+}
+
+// 保持现有的其他选项结构体不变
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct VmessWsOptions {
@@ -71,7 +120,18 @@ impl VmessProxy {
             uuid: None,
             alter_id: 0,
             cipher: None,
+            packet_encoding: None,
+            global_padding: None,
+            authenticated_length: None,
+            tls: None,
+            servername: None,
+            alpn: None,
+            fingerprint: None,
+            client_fingerprint: None,
+            skip_cert_verify: None,
+            reality_opts: None,
             network: None,
+            smux: None,
             ws_opts: None,
             http_opts: None,
             h2_opts: None,
@@ -82,21 +142,31 @@ impl VmessProxy {
 
 impl From<Proxy> for VmessProxy {
     fn from(proxy: Proxy) -> Self {
-        let common =
-            CommonProxyOptions::builder(proxy.remark.clone(), proxy.hostname.clone(), proxy.port)
-                .udp(proxy.udp)
-                .tfo(proxy.tcp_fast_open)
-                .skip_cert_verify(proxy.allow_insecure)
-                .sni(proxy.sni.clone())
-                .build();
+        // 不在 CommonProxyOptions 中重复设置这些字段
+        let common = CommonProxyOptions::builder(proxy.remark.clone(), proxy.hostname.clone(), proxy.port)
+            .udp(proxy.udp)
+            .tfo(proxy.tcp_fast_open)
+            .build();
 
         let mut vmess = VmessProxy::new(common);
 
+        // 基本配置
         vmess.uuid = proxy.user_id.clone();
         vmess.alter_id = proxy.alter_id as u32;
         vmess.cipher = proxy.encrypt_method.clone();
         vmess.network = proxy.transfer_protocol.clone();
 
+        // TLS 配置 - 直接在 VmessProxy 中设置
+        vmess.tls = proxy.tls_secure;
+        vmess.servername = proxy.sni.clone();
+        vmess.skip_cert_verify = proxy.allow_insecure;
+
+        // 如果有指纹信息，设置指纹
+        if let Some(fingerprint) = proxy.fingerprint {
+            vmess.fingerprint = Some(fingerprint);
+        }
+
+        // 网络特定配置
         if let Some(network) = &proxy.transfer_protocol {
             match network.as_str() {
                 "ws" => {

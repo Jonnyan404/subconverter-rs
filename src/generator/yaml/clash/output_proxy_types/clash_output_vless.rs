@@ -71,6 +71,26 @@ pub struct WSOptions {
     pub v2ray_http_upgrade_fast_open: Option<bool>,
 }
 
+/// SMUX options for VLESS proxy
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct SmuxOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub protocol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub padding: Option<bool>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub max_connections: Option<String>,
+    #[serde(skip_serializing_if = "is_empty_option_string")]
+    pub min_streams: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statistic: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub only_tcp: Option<bool>,
+}
+
 /// VLESS proxy configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -115,6 +135,10 @@ pub struct VLessProxy {
         rename = "client-fingerprint"
     )]
     pub client_fingerprint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub smux: Option<SmuxOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skip_cert_verify: Option<bool>,
 }
 
 impl VLessProxy {
@@ -140,6 +164,8 @@ impl VLessProxy {
             servername: None,
             fingerprint: None,
             client_fingerprint: None,
+            smux: None,
+            skip_cert_verify: None,
         }
     }
 }

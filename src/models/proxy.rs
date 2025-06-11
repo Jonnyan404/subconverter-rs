@@ -129,6 +129,30 @@ pub struct Proxy {
     pub alpn: HashSet<String>,
 
     pub cwnd: u32,
+
+    // 新增 VLESS 字段
+    pub flow: Option<String>,
+    pub packet_encoding: Option<String>,
+    pub client_fingerprint: Option<String>,
+    pub reality_short_id: Option<String>,
+
+    // 新增 SMUX 字段
+    pub smux_enabled: Option<bool>,
+    pub smux_protocol: Option<String>,
+    pub smux_padding: Option<bool>,
+    pub smux_max_connections: Option<String>,
+    pub smux_min_streams: Option<String>,
+    pub smux_statistic: Option<bool>,
+    pub smux_only_tcp: Option<bool>,
+
+    // 新增 Brutal 字段
+    pub brutal_enabled: Option<bool>,
+    pub brutal_up: Option<String>,
+    pub brutal_down: Option<String>,
+
+    // 新增网络选项
+    pub grpc_service_name: Option<String>,
+    pub ws_headers: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Implement Default for Proxy
@@ -195,6 +219,23 @@ impl Default for Proxy {
             hop_interval: 0,
             alpn: HashSet::new(),
             cwnd: 0,
+            // 新增字段默认值
+            flow: None,
+            packet_encoding: None,
+            client_fingerprint: None,
+            reality_short_id: None,
+            smux_enabled: None,
+            smux_protocol: None,
+            smux_padding: None,
+            smux_max_connections: None,
+            smux_min_streams: None,
+            smux_statistic: None,
+            smux_only_tcp: None,
+            brutal_enabled: None,
+            brutal_up: None,
+            brutal_down: None,
+            grpc_service_name: None,
+            ws_headers: None,
         }
     }
 }

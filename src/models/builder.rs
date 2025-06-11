@@ -103,6 +103,92 @@ impl Proxy {
         proxy
     }
 
+    pub fn vless_construct(
+        group: &str,
+        name: &str,
+        server: &str,
+        port: u16,
+        uuid: &str,
+        flow: Option<String>,
+        network: &str,
+        tls: &str,
+        servername: &str,
+        reality_public_key: Option<String>,
+        reality_short_id: Option<String>,
+        packet_encoding: Option<String>,
+        client_fingerprint: Option<String>,
+        fingerprint: Option<String>,
+        alpn: Option<Vec<String>>,
+        grpc_service_name: Option<String>,
+        ws_path: Option<String>,
+        ws_headers: Option<std::collections::HashMap<String, String>>,
+        h2_host: Option<Vec<String>>,
+        h2_path: Option<String>,
+        smux_enabled: Option<bool>,
+        smux_protocol: Option<String>,
+        smux_padding: Option<bool>,
+        smux_max_connections: Option<String>,
+        smux_min_streams: Option<String>,
+        smux_statistic: Option<bool>,
+        smux_only_tcp: Option<bool>,
+        brutal_enabled: Option<bool>,
+        brutal_up: Option<String>,
+        brutal_down: Option<String>,
+        udp: Option<bool>,
+        tfo: Option<bool>,
+        skip_cert_verify: Option<bool>,
+        underlying_proxy: &str,
+    ) -> Proxy {
+        let mut proxy = Proxy {
+            proxy_type: ProxyType::Vless,
+            group: group.to_string(),
+            remark: name.to_string(),
+            hostname: server.to_string(),
+            port,
+            user_id: Some(uuid.to_string()),
+            transfer_protocol: Some(network.to_string()),
+            tls_secure: tls == "tls",
+            server_name: if !servername.is_empty() { Some(servername.to_string()) } else { None },
+            public_key: reality_public_key,
+            reality_short_id,
+            flow,
+            packet_encoding,
+            client_fingerprint,
+            fingerprint,
+            grpc_service_name,
+            ws_headers,
+            path: ws_path.or(h2_path),
+            host: h2_host.and_then(|hosts| hosts.first().cloned()),
+            smux_enabled,
+            smux_protocol,
+            smux_padding,
+            smux_max_connections,
+            smux_min_streams,
+            smux_statistic,
+            smux_only_tcp,
+            brutal_enabled,
+            brutal_up,
+            brutal_down,
+            udp,
+            tcp_fast_open: tfo,
+            allow_insecure: skip_cert_verify,
+            underlying_proxy: if !underlying_proxy.is_empty() { 
+                Some(underlying_proxy.to_string()) 
+            } else { 
+                None 
+            },
+            ..Default::default()
+        };
+        
+        if let Some(alpn_list) = alpn {
+            proxy.alpn = alpn_list.into_iter().collect();
+        }
+        
+        proxy
+    }
+
+
+
     pub fn ssr_construct(
         group: &str,
         remark: &str,
