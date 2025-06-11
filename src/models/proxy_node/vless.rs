@@ -26,6 +26,20 @@ pub struct VlessProxy {
     pub fingerprint: Option<String>,
     pub servername: Option<String>,
     pub client_fingerprint: Option<String>,
+
+    // ✅ 添加缺失的 SMUX 字段
+    pub smux_enabled: Option<bool>,
+    pub smux_protocol: Option<String>,
+    pub smux_padding: Option<bool>,
+    pub smux_max_connections: Option<String>,
+    pub smux_min_streams: Option<String>,
+    pub smux_statistic: Option<bool>,
+    pub smux_only_tcp: Option<bool>,
+
+    // ✅ 添加缺失的 Brutal 字段
+    pub brutal_enabled: Option<bool>,
+    pub brutal_up: Option<String>,
+    pub brutal_down: Option<String>,
 }
 
 impl Default for VlessProxy {
@@ -54,6 +68,16 @@ impl Default for VlessProxy {
             fingerprint: None,
             servername: None,
             client_fingerprint: None,
+            smux_enabled: None,
+            smux_protocol: None,
+            smux_padding: None,
+            smux_max_connections: None,
+            smux_min_streams: None,
+            smux_statistic: None,
+            smux_only_tcp: None,
+            brutal_enabled: None,
+            brutal_up: None,
+            brutal_down: None,
         }
     }
 }

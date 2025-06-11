@@ -133,10 +133,6 @@ pub fn ruleset_to_clash_str(
 
             // Trim whitespace from line
             let mut str_line = line.trim().to_string();
-            // 清理 IPv6 地址格式
-            if str_line.contains('[') && str_line.contains(']') && str_line.contains('/') {
-                str_line = clean_ipv6_address(&str_line);
-            }
             let line_size = str_line.len();
 
             // Skip empty lines and comments (';', '#', or '//')
@@ -169,24 +165,4 @@ pub fn ruleset_to_clash_str(
     }
 
     output_content
-}
-
-// 清理 IPv6 地址，移除方括号
-fn clean_ipv6_address(ip_with_cidr: &str) -> String {
-    if let Some(slash_pos) = ip_with_cidr.find('/') {
-        let ip_part = &ip_with_cidr[..slash_pos];
-        let cidr_part = &ip_with_cidr[slash_pos..];
-
-        if ip_part.starts_with('[') && ip_part.ends_with(']') {
-            format!("{}{}", &ip_part[1..ip_part.len() - 1], cidr_part)
-        } else {
-            ip_with_cidr.to_string()
-        }
-    } else {
-        if ip_with_cidr.starts_with('[') && ip_with_cidr.ends_with(']') {
-            ip_with_cidr[1..ip_with_cidr.len() - 1].to_string()
-        } else {
-            ip_with_cidr.to_string()
-        }
-    }
 }

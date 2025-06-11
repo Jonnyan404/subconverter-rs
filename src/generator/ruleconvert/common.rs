@@ -1,3 +1,21 @@
+/// 清理 IPv6 地址，移除方括号
+fn clean_ipv6_address(rule_content: &str) -> String {
+    // 匹配 [IPv6地址]/prefix 格式
+    if rule_content.contains('[') && rule_content.contains(']') && rule_content.contains('/') {
+        if let Some(start) = rule_content.find('[') {
+            if let Some(end) = rule_content.find(']') {
+                if start < end {
+                    let before = &rule_content[..start];
+                    let ipv6 = &rule_content[start + 1..end];
+                    let after = &rule_content[end + 1..];
+                    return format!("{}{}{}", before, ipv6, after);
+                }
+            }
+        }
+    }
+    rule_content.to_string()
+}
+
 /// Transforms a rule to a common format for use in different proxy clients
 ///
 /// # Arguments
@@ -25,10 +43,13 @@ pub fn transform_rule_to_common(input: &str, group: &str, no_resolve_only: bool)
 
     if part_count < 2 {
         // Single part rule, just add group
-        format!("{},{}", parts[0], group)
+        let cleaned_rule = clean_ipv6_address(parts[0]);
+        format!("{},{}", cleaned_rule, group)
     } else {
         // Multi-part rule
-        let mut result = format!("{},{},{}", parts[0], parts[1], group);
+        let cleaned_rule_type = parts[0];
+        let cleaned_rule_content = clean_ipv6_address(parts[1]);
+        let mut result = format!("{},{},{}", cleaned_rule_type, cleaned_rule_content, group);
 
         // Add options like no-resolve if present and applicable
         if part_count > 2 && (!no_resolve_only || parts[2] == "no-resolve") {

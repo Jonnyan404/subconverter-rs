@@ -180,9 +180,30 @@ impl Proxy {
             ..Default::default()
         };
         
-        if let Some(alpn_list) = alpn {
-            proxy.alpn = alpn_list.into_iter().collect();
-        }
+        // ✅ 添加：创建 VlessProxy 并设置到 combined_proxy
+        let vless_proxy = crate::models::proxy_node::vless::VlessProxy {
+            uuid: uuid.to_string(),
+            flow,
+            tls: tls == "tls",
+            network: Some(network.to_string()),
+            reality_public_key,
+            reality_short_id,
+            packet_encoding,
+            client_fingerprint,
+            fingerprint,
+            grpc_service_name,
+            ws_path,
+            ws_headers,
+            h2_host: h2_host.clone(),
+            h2_path,
+            servername: if !servername.is_empty() { Some(servername.to_string()) } else { None },
+            alpn: alpn.map(|a| a.into_iter().collect()).unwrap_or_default(),
+            udp: udp.unwrap_or(true),
+            // ... 其他字段
+            ..Default::default()
+        };
+        
+        proxy.combined_proxy = Some(crate::models::proxy_node::combined::CombinedProxy::Vless(vless_proxy));
         
         proxy
     }
