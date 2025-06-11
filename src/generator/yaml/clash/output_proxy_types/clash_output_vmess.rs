@@ -157,7 +157,7 @@ impl From<Proxy> for VmessProxy {
         vmess.network = proxy.transfer_protocol.clone();
 
         // TLS 配置 - 直接在 VmessProxy 中设置
-        vmess.tls = proxy.tls_secure;
+        vmess.tls = Some(proxy.tls_secure);
         vmess.servername = proxy.sni.clone();
         vmess.skip_cert_verify = proxy.allow_insecure;
 
