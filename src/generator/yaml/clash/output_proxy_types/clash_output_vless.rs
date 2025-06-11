@@ -272,7 +272,7 @@ impl From<Proxy> for VLessProxy {
                 vless.servername = vless_proxy.servername.clone();
             }
         } else {
-            // ✅ 使用 Proxy 直接字段（这是我们解析 VLESS 时使用的路径）
+            // ✅ 使用 Proxy 直接字段
             vless.uuid = proxy.user_id.unwrap_or_default();
             vless.flow = proxy.flow;
             vless.tls = Some(proxy.tls_secure);
@@ -287,19 +287,18 @@ impl From<Proxy> for VLessProxy {
                 vless.alpn = Some(proxy.alpn.into_iter().collect());
             }
 
-            // ✅ 处理 Reality 配置
-            if let (Some(public_key), Some(short_id)) = (
-                &proxy.public_key,
-                &proxy.reality_short_id,
-            ) {
-                vless.reality_opts = Some(RealityOptions {
-                    public_key: public_key.clone(),
-                    short_id: short_id.clone(),
-                });
+            // ✅ 修复 Reality 配置条件判断
+            if let Some(public_key) = &proxy.public_key {
+                if !public_key.is_empty() {
+                    vless.reality_opts = Some(RealityOptions {
+                        public_key: public_key.clone(),
+                        short_id: proxy.reality_short_id.clone().unwrap_or_default(),
+                    });
+                }
             }
 
-            // ✅ 处理 SMUX 配置
-            if proxy.smux_enabled.is_some() 
+            // ✅ 处理 SMUX 配置 - 降低条件要求
+            if proxy.smux_enabled.unwrap_or(false) 
                 || proxy.smux_protocol.is_some() 
                 || proxy.smux_padding.is_some() 
                 || proxy.smux_max_connections.is_some() 
@@ -317,8 +316,8 @@ impl From<Proxy> for VLessProxy {
                 });
             }
 
-            // ✅ 处理 Brutal 配置
-            if proxy.brutal_enabled.is_some() 
+            // ✅ 处理 Brutal 配置 - 降低条件要求
+            if proxy.brutal_enabled.unwrap_or(false)
                 || proxy.brutal_up.is_some() 
                 || proxy.brutal_down.is_some() {
                 vless.brutal_opts = Some(BrutalOptions {
