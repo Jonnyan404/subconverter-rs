@@ -79,13 +79,20 @@ pub fn convert_ruleset(content: &str, ruleset_type: RulesetType) -> String {
 
             // Process actual rules
             if let Some(pos) = line.find('/') {
-                // IP-CIDR or IP-CIDR6 classification
-                if is_ipv4(&line[..pos]) {
-                    output.push_str("IP-CIDR,");
-                } else {
-                    output.push_str("IP-CIDR6,");
+                // 清理 IPv6 地址格式
+                let cleaned_line = clean_ipv6_address(&line);
+
+                // 重新找到斜杠位置（因为可能已经改变）
+                if let Some(new_pos) = cleaned_line.find('/') {
+                    let ip_part = &cleaned_line[..new_pos];
+
+                    if is_ipv4(ip_part) {
+                        output.push_str("IP-CIDR,");
+                    } else {
+                        output.push_str("IP-CIDR6,");
+                    }
+                    output.push_str(&cleaned_line);
                 }
-                output.push_str(&line);
             } else if line.starts_with('.') || (line.len() >= 2 && line.starts_with("+.")) {
                 // Domain suffix or keyword
                 let mut keyword_flag = false;
@@ -165,4 +172,26 @@ pub fn convert_ruleset(content: &str, ruleset_type: RulesetType) -> String {
     }
 
     output
+}
+
+/// 清理 IPv6 地址，移除方括号
+fn clean_ipv6_address(ip_with_cidr: &str) -> String {
+    if let Some(slash_pos) = ip_with_cidr.find('/') {
+        let ip_part = &ip_with_cidr[..slash_pos];
+        let cidr_part = &ip_with_cidr[slash_pos..];
+
+        // 移除 IPv6 地址的方括号
+        if ip_part.starts_with('[') && ip_part.ends_with(']') {
+            format!("{}{}", &ip_part[1..ip_part.len() - 1], cidr_part)
+        } else {
+            ip_with_cidr.to_string()
+        }
+    } else {
+        // 没有 CIDR 后缀的情况
+        if ip_with_cidr.starts_with('[') && ip_with_cidr.ends_with(']') {
+            ip_with_cidr[1..ip_with_cidr.len() - 1].to_string()
+        } else {
+            ip_with_cidr.to_string()
+        }
+    }
 }
