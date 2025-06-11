@@ -179,6 +179,7 @@ impl VLessProxy {
             fingerprint: None,
             client_fingerprint: None,
             smux: None,
+            brutal_opts: None, 
             skip_cert_verify: None,
         }
     }
@@ -275,7 +276,7 @@ impl From<Proxy> for VLessProxy {
             vless.uuid = proxy.user_id.unwrap_or_default();
             vless.flow = proxy.flow;
             vless.tls = Some(proxy.tls_secure);
-            vless.network = proxy.transfer_protocol;
+            vless.network = proxy.transfer_protocol.clone();
             vless.packet_encoding = proxy.packet_encoding;
             vless.fingerprint = proxy.fingerprint;
             vless.client_fingerprint = proxy.client_fingerprint;
