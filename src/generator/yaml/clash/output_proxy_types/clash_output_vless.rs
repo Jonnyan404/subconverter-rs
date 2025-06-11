@@ -219,7 +219,7 @@ impl From<Proxy> for VLessProxy {
                 }
 
                 // 处理 Reality 配置
-                if let (Some(public_key), Some(short_id)) = (
+                if let (Some(public_key)) = (
                     &vless_proxy.reality_public_key,
                     &vless_proxy.reality_short_id,
                 ) {
