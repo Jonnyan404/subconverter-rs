@@ -187,47 +187,165 @@ impl VLessProxy {
 
 impl From<Proxy> for VLessProxy {
     fn from(proxy: Proxy) -> Self {
-        let common = CommonProxyOptions::builder(
-            proxy.remark.clone(), 
-            proxy.hostname.clone(), 
-            proxy.port
-        )
-        .udp(proxy.udp)
-        .tfo(proxy.tcp_fast_open)
-        .skip_cert_verify(proxy.allow_insecure)
-        .sni(proxy.sni.clone())
-        .build();
+        let common =
+            CommonProxyOptions::builder(proxy.remark.clone(), proxy.hostname.clone(), proxy.port)
+                .udp(proxy.udp)
+                .tfo(proxy.tcp_fast_open)
+                .skip_cert_verify(proxy.allow_insecure)
+                .sni(proxy.sni.clone())
+                .build();
 
         let mut vless = VLessProxy::new(common);
 
-        // 从 combined_proxy 获取 VLESS 特有配置或使用 Proxy 直接字段
-        vless.uuid = proxy.user_id.clone().unwrap_or_default();
-        vless.flow = proxy.flow.clone();
-        vless.tls = Some(proxy.tls_secure);
-        vless.network = proxy.transfer_protocol.clone();
-        vless.packet_encoding = proxy.packet_encoding.clone();
-        vless.fingerprint = proxy.fingerprint.clone();
-        vless.client_fingerprint = proxy.client_fingerprint.clone();
-        vless.servername = proxy.server_name.clone();
+        // 从 combined_proxy 获取 VLESS 特有配置
+        if let Some(ref combined) = proxy.combined_proxy {
+            if let crate::models::proxy_node::combined::CombinedProxy::Vless(ref vless_proxy) =
+                combined
+            {
+                vless.uuid = vless_proxy.uuid.clone();
+                vless.flow = vless_proxy.flow.clone();
+                vless.tls = Some(vless_proxy.tls);
+                vless.network = vless_proxy.network.clone();
+                vless.packet_addr = vless_proxy.packet_addr;
+                vless.common.udp = Some(vless_proxy.udp);
+                vless.xudp = vless_proxy.xudp;
+                vless.packet_encoding = vless_proxy.packet_encoding.clone();
+                vless.fingerprint = vless_proxy.fingerprint.clone();
+                vless.client_fingerprint = vless_proxy.client_fingerprint.clone();
+                vless.servername = vless_proxy.servername.clone();
 
-        // 处理 ALPN
-        if !proxy.alpn.is_empty() {
-            vless.alpn = Some(proxy.alpn.iter().cloned().collect());
-        }
+                // 处理 ALPN
+                if !vless_proxy.alpn.is_empty() {
+                    vless.alpn = Some(vless_proxy.alpn.iter().cloned().collect());
+                }
 
-        // 处理 Reality 配置（需要同时有 public_key 和 short_id）
-        if let (Some(public_key), Some(short_id)) = (&proxy.public_key, &proxy.reality_short_id) {
-            vless.reality_opts = Some(RealityOptions {
-                public_key: public_key.clone(),
-                short_id: short_id.clone(),
+                // ✅ 处理 Reality 配置（如果有任何 Reality 字段）
+                if proxy.public_key.is_some() || proxy.reality_short_id.is_some() {
+                    vless.reality_opts = Some(RealityOptions {
+                        public_key: proxy.public_key.clone().unwrap_or_default(),
+                        short_id: proxy.reality_short_id.clone().unwrap_or_default(),
+                    });
+                }
+
+                // ✅ 添加 SMUX 配置处理
+                if vless_proxy.smux_enabled.is_some() || 
+                   vless_proxy.smux_protocol.is_some() || 
+                   vless_proxy.smux_padding.is_some() ||
+                   vless_proxy.smux_max_connections.is_some() ||
+                   vless_proxy.smux_min_streams.is_some() ||
+                   vless_proxy.smux_statistic.is_some() ||
+                   vless_proxy.smux_only_tcp.is_some() {
+                    vless.smux = Some(SmuxOptions {
+                        enabled: vless_proxy.smux_enabled,
+                        protocol: vless_proxy.smux_protocol.clone(),
+                        padding: vless_proxy.smux_padding,
+                        max_connections: vless_proxy.smux_max_connections.clone(),
+                        min_streams: vless_proxy.smux_min_streams.clone(),
+                        statistic: vless_proxy.smux_statistic,
+                        only_tcp: vless_proxy.smux_only_tcp,
+                    });
+                }
+
+                // ✅ 添加 Brutal 配置处理
+                if vless_proxy.brutal_enabled.is_some() || 
+                   vless_proxy.brutal_up.is_some() || 
+                   vless_proxy.brutal_down.is_some() {
+                    vless.brutal_opts = Some(BrutalOptions {
+                        enabled: vless_proxy.brutal_enabled,
+                        up: vless_proxy.brutal_up.clone(),
+                        down: vless_proxy.brutal_down.clone(),
+                    });
+                }
+
+                // 处理网络特定配置
+                if let Some(network) = &vless_proxy.network {
+                    match network.as_str() {
+                        "ws" => {
+                            if vless_proxy.ws_path.is_some() || vless_proxy.ws_headers.is_some() {
+                                let ws_opts = WSOptions {
+                                    path: vless_proxy.ws_path.clone(),
+                                    headers: vless_proxy.ws_headers.clone(),
+                                    max_early_data: None,
+                                    early_data_header_name: None,
+                                    v2ray_http_upgrade: None,
+                                    v2ray_http_upgrade_fast_open: None,
+                                };
+                                vless.ws_opts = Some(ws_opts);
+                            }
+                        }
+                        "grpc" => {
+                            if let Some(ref service_name) = vless_proxy.grpc_service_name {
+                                let grpc_opts = GrpcOptions {
+                                    grpc_service_name: Some(service_name.clone()),
+                                };
+                                vless.grpc_opts = Some(grpc_opts);
+                            }
+                        }
+                        "h2" => {
+                            let h2_opts = HTTP2Options {
+                                host: vless_proxy.h2_host.clone(),
+                                path: vless_proxy.h2_path.clone(),
+                            };
+                            vless.h2_opts = Some(h2_opts);
+                        }
+                        "http" => {
+                            let http_opts = HTTPOptions {
+                                method: vless_proxy.http_method.clone(),
+                                path: vless_proxy.http_path.as_ref().map(|p| vec![p.clone()]),
+                                headers: vless_proxy.http_headers.clone(),
+                            };
+                            vless.http_opts = Some(http_opts);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        } else {
+            // ✅ 使用 Proxy 直接字段
+            vless.uuid = proxy.user_id.unwrap_or_default();
+            vless.flow = proxy.flow;
+            vless.tls = Some(proxy.tls_secure);
+            vless.network = proxy.transfer_protocol.clone();
+            vless.packet_encoding = proxy.packet_encoding;
+            vless.fingerprint = proxy.fingerprint;
+            vless.client_fingerprint = proxy.client_fingerprint;
+            vless.servername = proxy.server_name;
+
+            // ✅ 处理 ALPN
+            if !proxy.alpn.is_empty() {
+                vless.alpn = Some(proxy.alpn.into_iter().collect());
+            }
+
+            // ✅ 强制设置 Reality 配置（如果有任何 Reality 字段）
+            if proxy.public_key.is_some() || proxy.reality_short_id.is_some() {
+                vless.reality_opts = Some(RealityOptions {
+                    public_key: proxy.public_key.clone().unwrap_or_default(),
+                    short_id: proxy.reality_short_id.clone().unwrap_or_default(),
+                });
+            }
+
+            // ✅ 强制设置 SMUX 配置（总是创建，让 skip_serializing_if 决定是否输出）
+            vless.smux = Some(SmuxOptions {
+                enabled: proxy.smux_enabled,
+                protocol: proxy.smux_protocol,
+                padding: proxy.smux_padding,
+                max_connections: proxy.smux_max_connections,
+                min_streams: proxy.smux_min_streams,
+                statistic: proxy.smux_statistic,
+                only_tcp: proxy.smux_only_tcp,
             });
-        }
 
-        // 处理不同网络类型的特殊配置
-        if let Some(network) = &proxy.transfer_protocol {
-            match network.as_str() {
-                "ws" => {
-                    if proxy.path.is_some() || proxy.ws_headers.is_some() {
+            // ✅ 强制设置 Brutal 配置（总是创建，让 skip_serializing_if 决定是否输出）
+            vless.brutal_opts = Some(BrutalOptions {
+                enabled: proxy.brutal_enabled,
+                up: proxy.brutal_up,
+                down: proxy.brutal_down,
+            });
+
+            // ✅ 处理网络特定配置
+            if let Some(network) = &proxy.transfer_protocol {
+                match network.as_str() {
+                    "ws" => {
                         vless.ws_opts = Some(WSOptions {
                             path: proxy.path.clone(),
                             headers: proxy.ws_headers.clone(),
@@ -237,44 +355,20 @@ impl From<Proxy> for VLessProxy {
                             v2ray_http_upgrade_fast_open: None,
                         });
                     }
-                }
-                "grpc" => {
-                    if let Some(ref service_name) = proxy.grpc_service_name {
+                    "grpc" => {
                         vless.grpc_opts = Some(GrpcOptions {
-                            grpc_service_name: Some(service_name.clone()),
+                            grpc_service_name: proxy.grpc_service_name.clone(),
                         });
                     }
+                    "h2" => {
+                        vless.h2_opts = Some(HTTP2Options {
+                            host: None, // 需要从 proxy.host 解析
+                            path: proxy.path.clone(),
+                        });
+                    }
+                    _ => {}
                 }
-                "h2" => {
-                    vless.h2_opts = Some(HTTP2Options {
-                        host: proxy.host.as_ref().map(|h| vec![h.clone()]),
-                        path: proxy.path.clone(),
-                    });
-                }
-                _ => {}
             }
-        }
-
-        // 仅在有显式配置时添加 SMUX
-        if proxy.smux_enabled.unwrap_or(false) {
-            vless.smux = Some(SmuxOptions {
-                enabled: proxy.smux_enabled,
-                protocol: proxy.smux_protocol.clone(),
-                padding: proxy.smux_padding,
-                max_connections: proxy.smux_max_connections.clone(),
-                min_streams: proxy.smux_min_streams.clone(),
-                statistic: proxy.smux_statistic,
-                only_tcp: proxy.smux_only_tcp,
-            });
-        }
-
-        // 仅在有显式配置时添加 Brutal
-        if proxy.brutal_enabled.unwrap_or(false) {
-            vless.brutal_opts = Some(BrutalOptions {
-                enabled: proxy.brutal_enabled,
-                up: proxy.brutal_up.clone(),
-                down: proxy.brutal_down.clone(),
-            });
         }
 
         vless

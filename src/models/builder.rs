@@ -531,54 +531,82 @@ impl Proxy {
         tfo: Option<bool>,
         skip_cert_verify: Option<bool>,
         underlying_proxy: &str,
-    ) -> Self {
-        let mut proxy = Self::common_construct(
-            crate::ProxyType::Vless,
-            group,
-            name,
-            server,
+    ) -> Proxy {
+        let mut proxy = Proxy {
+            proxy_type: ProxyType::Vless,
+            group: group.to_string(),
+            remark: name.to_string(),
+            hostname: server.to_string(),
             port,
+            user_id: Some(uuid.to_string()),
+            transfer_protocol: Some(network.to_string()),
+            tls_secure: tls == "tls",
+            server_name: if !servername.is_empty() { Some(servername.to_string()) } else { None },
+            public_key: reality_public_key.clone(),
+            reality_short_id: reality_short_id.clone(),
+            flow: flow.clone(),
+            packet_encoding: packet_encoding.clone(),
+            client_fingerprint: client_fingerprint.clone(),
+            fingerprint: fingerprint.clone(),
+            grpc_service_name: grpc_service_name.clone(),
+            ws_headers: ws_headers.clone(),
+            path: ws_path.clone().or(h2_path.clone()),
+            host: h2_host.as_ref().and_then(|hosts| hosts.first().cloned()),
+            smux_enabled,
+            smux_protocol: smux_protocol.clone(),
+            smux_padding,
+            smux_max_connections: smux_max_connections.clone(),
+            smux_min_streams: smux_min_streams.clone(),
+            smux_statistic,
+            smux_only_tcp,
+            brutal_enabled,
+            brutal_up: brutal_up.clone(),
+            brutal_down: brutal_down.clone(),
             udp,
-            tfo,
-            skip_cert_verify,
-            None,
-            underlying_proxy,
-        );
-
-        // ✅ 只设置直接字段，不设置 combined_proxy
-        proxy.user_id = Some(uuid.to_string());
-        proxy.transfer_protocol = Some(network.to_string());
-        proxy.tls_secure = tls == "tls";
-        proxy.server_name = if !servername.is_empty() { 
-            Some(servername.to_string()) 
-        } else { 
-            None 
+            tcp_fast_open: tfo,
+            allow_insecure: skip_cert_verify,
+            underlying_proxy: if !underlying_proxy.is_empty() { 
+                Some(underlying_proxy.to_string()) 
+            } else { 
+                None 
+            },
+            ..Default::default()
         };
-        proxy.public_key = reality_public_key;
-        proxy.reality_short_id = reality_short_id;
-        proxy.flow = flow;
-        proxy.packet_encoding = packet_encoding;
-        proxy.client_fingerprint = client_fingerprint;
-        proxy.fingerprint = fingerprint;
-        proxy.grpc_service_name = grpc_service_name;
-        proxy.ws_headers = ws_headers;
-        proxy.path = ws_path.or(h2_path);
-        proxy.host = h2_host.and_then(|hosts| hosts.into_iter().next());
-        proxy.smux_enabled = smux_enabled;
-        proxy.smux_protocol = smux_protocol;
-        proxy.smux_padding = smux_padding;
-        proxy.smux_max_connections = smux_max_connections;
-        proxy.smux_min_streams = smux_min_streams;
-        proxy.smux_statistic = smux_statistic;
-        proxy.smux_only_tcp = smux_only_tcp;
-        proxy.brutal_enabled = brutal_enabled;
-        proxy.brutal_up = brutal_up;
-        proxy.brutal_down = brutal_down;
-
-        if let Some(alpn_vec) = alpn {
-            proxy.alpn = alpn_vec.into_iter().collect();
-        }
-
+        
+        // ✅ 创建 VlessProxy 并设置到 combined_proxy
+        let vless_proxy = crate::models::proxy_node::vless::VlessProxy {
+            uuid: uuid.to_string(),
+            flow,
+            tls: tls == "tls",
+            network: Some(network.to_string()),
+            reality_public_key,
+            reality_short_id,
+            packet_encoding,
+            client_fingerprint,
+            fingerprint,
+            grpc_service_name,
+            ws_path,
+            ws_headers,
+            h2_host,
+            h2_path,
+            servername: if !servername.is_empty() { Some(servername.to_string()) } else { None },
+            alpn: alpn.map(|a| a.into_iter().collect()).unwrap_or_default(),
+            udp: udp.unwrap_or(true),
+            smux_enabled,
+            smux_protocol,
+            smux_padding,
+            smux_max_connections,
+            smux_min_streams,
+            smux_statistic,
+            smux_only_tcp,
+            brutal_enabled,
+            brutal_up,
+            brutal_down,
+            ..Default::default()
+        };
+        
+        proxy.combined_proxy = Some(crate::models::proxy_node::combined::CombinedProxy::Vless(vless_proxy));
+        
         proxy
     }
 }
